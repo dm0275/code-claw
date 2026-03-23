@@ -12,6 +12,7 @@ Overall state:
 
 - Project bootstrapped as a Python package with FastAPI
 - Initial backend API implemented
+- Predefined project registry introduced for execution safety
 - Local developer workflow added
 - Baseline automated tests added and passing
 
@@ -26,7 +27,7 @@ Overall state:
 
 ### Domain model
 
-- Workspace models
+- Project models
 - Task models
 - Run models
 - Approval request model
@@ -35,8 +36,7 @@ Overall state:
 ### API endpoints
 
 - `GET /health`
-- `GET /workspaces`
-- `POST /workspaces`
+- `GET /projects`
 - `GET /tasks`
 - `POST /tasks`
 - `GET /tasks/{task_id}`
@@ -45,13 +45,14 @@ Overall state:
 
 ### Task orchestration
 
-- In-memory store for workspaces, tasks, runs, and recent task events
+- In-memory store for predefined projects, tasks, runs, and recent task events
 - Prompt builder aligned to the PRD structure:
   - objective
-  - workspace
+  - project
   - constraints
   - acceptance criteria
   - output expectations
+- Project-specific TOML context and `instructions.md` merged into prompts
 - Background task execution via thread-based runner dispatch
 - Task lifecycle handling:
   - `pending`
@@ -63,8 +64,11 @@ Overall state:
 
 ### Execution layer
 
-- Workspace path validation
-- Stubbed Codex runner that emits synthetic progress logs
+- Project path validation
+- Codex CLI runner wired through `codex exec --json`
+- Real-time stdout and stderr streaming into task events
+- Final agent message captured as task summary
+- Changed files collected from `git status --short`
 - SSE-compatible event formatting for live task updates
 
 ### Developer workflow
@@ -100,7 +104,6 @@ Most recent verification:
 
 These PRD items are not implemented yet:
 
-- Real Codex CLI execution
 - Persistent storage
 - Git branch or sandbox management per task
 - Diff extraction from real file changes
@@ -115,13 +118,12 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Replace the stubbed runner with a real Codex CLI adapter
-2. Persist workspaces, tasks, runs, and approvals to a database
-3. Add workspace sandbox or per-task branch preparation
-4. Capture actual logs, diffs, and changed files from task execution
-5. Extend approval flow so approved changes can be applied safely
-6. Add API tests around failure paths and invalid approvals
-7. Start the web UI once the execution contract stabilizes
+1. Persist workspaces, tasks, runs, and approvals to a database
+2. Add per-project sandbox or per-task branch preparation
+3. Capture full diffs and durable artifacts from task execution
+4. Extend approval flow so approved changes can be applied safely
+5. Add API tests around failure paths and invalid approvals
+6. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -134,4 +136,6 @@ Priority order:
 - Added `Makefile`
 - Added pytest-based API tests
 - Added Ruff and Mypy lint workflow
+- Replaced the stubbed runner with a Codex CLI-backed executor
+- Added TOML-backed predefined project configuration
 - Added this implementation progress tracker

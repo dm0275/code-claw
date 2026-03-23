@@ -3,6 +3,7 @@
 Initial Phase 1 backend scaffold for the PRD in [`docs/PRD.md`](docs/PRD.md).
 
 Current implementation status is tracked in [`docs/IMPLEMENTATION_PROGRESS.md`](docs/IMPLEMENTATION_PROGRESS.md).
+Configuration is described in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 ## Run
 
@@ -23,9 +24,9 @@ Current implementation status is tracked in [`docs/IMPLEMENTATION_PROGRESS.md`](
 This bootstrap includes:
 
 - FastAPI app skeleton
-- workspace registration
+- predefined project registry loaded from TOML
 - task creation and state transitions
 - in-memory orchestration and run tracking
 - SSE task event stream
 
-The Codex runner is intentionally stubbed for now and emits synthetic execution logs until the real CLI integration is wired in.
+Projects are loaded from `~/.codeclaw/config.toml` with optional per-project metadata under `~/.codeclaw/projects/<project-id>/`.

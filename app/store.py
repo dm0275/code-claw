@@ -4,29 +4,24 @@ from collections import defaultdict, deque
 from threading import Lock
 from typing import Deque, Dict, List, Optional
 
-from app.models import Run, Task, TaskEvent, Workspace
+from app.models import Project, Run, Task, TaskEvent
 
 
 class InMemoryStore:
-    def __init__(self) -> None:
+    def __init__(self, projects: list[Project] | None = None) -> None:
         self._lock = Lock()
-        self.workspaces: Dict[str, Workspace] = {}
+        self.projects: Dict[str, Project] = {project.id: project for project in projects or []}
         self.tasks: Dict[str, Task] = {}
         self.runs_by_task: Dict[str, Run] = {}
         self.events_by_task: Dict[str, Deque[TaskEvent]] = defaultdict(lambda: deque(maxlen=200))
 
-    def add_workspace(self, workspace: Workspace) -> Workspace:
+    def list_projects(self) -> List[Project]:
         with self._lock:
-            self.workspaces[workspace.id] = workspace
-            return workspace
+            return list(self.projects.values())
 
-    def list_workspaces(self) -> List[Workspace]:
+    def get_project(self, project_id: str) -> Optional[Project]:
         with self._lock:
-            return list(self.workspaces.values())
-
-    def get_workspace(self, workspace_id: str) -> Optional[Workspace]:
-        with self._lock:
-            return self.workspaces.get(workspace_id)
+            return self.projects.get(project_id)
 
     def add_task(self, task: Task) -> Task:
         with self._lock:

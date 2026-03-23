@@ -3,13 +3,15 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
-from app.models import ApprovalRequest, Task, TaskCreate, TaskDetail, Workspace, WorkspaceCreate
+from app.config import ProjectRegistry
+from app.models import ApprovalRequest, Project, Task, TaskCreate, TaskDetail
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.store import InMemoryStore
 
 
 def build_service() -> TaskService:
-    store = InMemoryStore()
+    registry = ProjectRegistry.load()
+    store = InMemoryStore(projects=registry.projects)
     broker = EventBroker()
     return TaskService(store=store, workspace_manager=WorkspaceManager(), broker=broker)
 
@@ -22,13 +24,9 @@ def create_app(task_service: TaskService | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/workspaces", response_model=list[Workspace])
-    def list_workspaces() -> list[Workspace]:
-        return service.list_workspaces()
-
-    @app.post("/workspaces", response_model=Workspace, status_code=201)
-    def create_workspace(payload: WorkspaceCreate) -> Workspace:
-        return service.create_workspace(payload)
+    @app.get("/projects", response_model=list[Project])
+    def list_projects() -> list[Project]:
+        return service.list_projects()
 
     @app.get("/tasks", response_model=list[Task])
     def list_tasks() -> list[Task]:

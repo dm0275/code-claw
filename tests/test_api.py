@@ -6,8 +6,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.config import ProjectRegistry
 from app.main import create_app
-from app.models import Run, Task, TaskEvent, TaskStatus, utc_now
+from app.models import Project, Run, Task, TaskEvent, TaskStatus, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.store import InMemoryStore
 
@@ -37,16 +38,17 @@ class InstantRunner:
 
 
 def make_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
-    store = InMemoryStore()
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    project = Project(id="demo", name="Demo", path=str(project_root))
+    store = InMemoryStore(projects=[project])
     broker = EventBroker()
     service = TaskService(store=store, workspace_manager=WorkspaceManager(), broker=broker)
     service.runner = InstantRunner()
 
-    workspace_root = tmp_path / "workspace"
-    workspace_root.mkdir()
-
     client = TestClient(create_app(service))
-    return client, service, workspace_root
+    return client, service, project_root
 
 
 def wait_for_status(
@@ -73,21 +75,18 @@ def test_healthcheck(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+    projects_response = client.get("/projects")
+    assert projects_response.status_code == 200
+    assert projects_response.json()[0]["id"] == "demo"
+
 
 def test_task_lifecycle_and_approval(tmp_path: Path) -> None:
-    client, _, workspace_root = make_context(tmp_path)
-
-    workspace_response = client.post(
-        "/workspaces",
-        json={"name": "repo", "path": str(workspace_root), "branch": "main"},
-    )
-    assert workspace_response.status_code == 201
-    workspace_id = workspace_response.json()["id"]
+    client, _, _ = make_context(tmp_path)
 
     task_response = client.post(
         "/tasks",
         json={
-            "workspace_id": workspace_id,
+            "project_id": "demo",
             "prompt": "Add pagination",
             "constraints": ["Only change API files"],
             "acceptance_criteria": ["Tests pass"],
@@ -102,6 +101,7 @@ def test_task_lifecycle_and_approval(tmp_path: Path) -> None:
     assert detail["run"]["exit_code"] == 0
     assert "OBJECTIVE:" in detail["run"]["structured_prompt"]
     assert "ACCEPTANCE CRITERIA:" in detail["run"]["structured_prompt"]
+    assert "PROJECT:" in detail["run"]["structured_prompt"]
 
     approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
     assert approval_response.status_code == 200
@@ -109,15 +109,10 @@ def test_task_lifecycle_and_approval(tmp_path: Path) -> None:
 
 
 def test_event_stream_includes_task_history(tmp_path: Path) -> None:
-    client, service, workspace_root = make_context(tmp_path)
-
-    workspace_id = client.post(
-        "/workspaces",
-        json={"name": "repo", "path": str(workspace_root)},
-    ).json()["id"]
+    client, service, _ = make_context(tmp_path)
     task_id = client.post(
         "/tasks",
-        json={"workspace_id": workspace_id, "prompt": "Document the API"},
+        json={"project_id": "demo", "prompt": "Document the API"},
     ).json()["id"]
 
     wait_for_status(client, task_id, "awaiting_approval")
@@ -137,3 +132,49 @@ def test_event_stream_includes_task_history(tmp_path: Path) -> None:
                 event_payloads.append(json.loads(line.removeprefix("data: ")))
 
     assert any(item["message"] == "Task is awaiting approval" for item in event_payloads)
+
+
+def test_project_registry_loads_project_context(tmp_path: Path) -> None:
+    config_root = tmp_path / ".codeclaw"
+    project_root = tmp_path / "registered-project"
+    project_root.mkdir()
+    project_meta_dir = config_root / "projects" / "demo"
+    project_meta_dir.mkdir(parents=True)
+
+    (config_root / "config.toml").write_text(
+        """
+[defaults]
+sandbox = "workspace-write"
+approval_required = true
+
+[[projects]]
+id = "demo"
+name = "Demo"
+path = "__PROJECT_ROOT__"
+""".replace("__PROJECT_ROOT__", str(project_root)),
+        encoding="utf-8",
+    )
+    (project_meta_dir / "config.toml").write_text(
+        """
+default_branch = "main"
+
+[context]
+summary = "Local project summary"
+extra_constraints = ["Never edit generated files"]
+""",
+        encoding="utf-8",
+    )
+    (project_meta_dir / "instructions.md").write_text(
+        "Use the internal build harness before changing APIs.",
+        encoding="utf-8",
+    )
+
+    registry = ProjectRegistry.load(config_root)
+
+    assert len(registry.projects) == 1
+    project = registry.projects[0]
+    assert project.id == "demo"
+    assert project.default_branch == "main"
+    assert project.context.summary == "Local project summary"
+    assert project.context.extra_constraints == ["Never edit generated files"]
+    assert project.context.instructions == "Use the internal build harness before changing APIs."

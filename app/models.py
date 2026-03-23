@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 def utc_now() -> datetime:
@@ -31,17 +31,29 @@ class ApprovalAction(str, Enum):
     REJECT = "reject"
 
 
-class WorkspaceCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    path: str = Field(min_length=1, max_length=1024)
-    branch: Optional[str] = Field(default=None, max_length=255)
+class ProjectExecution(BaseModel):
+    sandbox: str = "workspace-write"
+    approval_required: bool = True
+    auto_create_branch: bool = False
+    branch_prefix: Optional[str] = None
+    extra_writable_dirs: List[str] = Field(default_factory=list)
 
 
-class Workspace(BaseModel):
-    id: str = Field(default_factory=new_id)
+class ProjectContext(BaseModel):
+    summary: Optional[str] = None
+    extra_constraints: List[str] = Field(default_factory=list)
+    instructions: Optional[str] = None
+
+
+class Project(BaseModel):
+    id: str
     name: str
     path: str
-    branch: Optional[str] = None
+    enabled: bool = True
+    default_branch: Optional[str] = None
+    project_dir: Optional[str] = None
+    execution: ProjectExecution = Field(default_factory=ProjectExecution)
+    context: ProjectContext = Field(default_factory=ProjectContext)
     created_at: datetime = Field(default_factory=utc_now)
 
     @property
@@ -50,7 +62,7 @@ class Workspace(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    workspace_id: str
+    project_id: str = Field(validation_alias=AliasChoices("project_id", "workspace_id"))
     prompt: str = Field(min_length=1)
     constraints: List[str] = Field(default_factory=list)
     acceptance_criteria: List[str] = Field(default_factory=list)
@@ -58,7 +70,7 @@ class TaskCreate(BaseModel):
 
 class Task(BaseModel):
     id: str = Field(default_factory=new_id)
-    workspace_id: str
+    project_id: str
     prompt: str
     constraints: List[str] = Field(default_factory=list)
     acceptance_criteria: List[str] = Field(default_factory=list)
