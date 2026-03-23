@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from app.config import ProjectRegistry
 from app.db import make_session_factory
@@ -43,6 +43,10 @@ def create_app(task_service: TaskService | None = None) -> FastAPI:
     @app.get("/tasks/{task_id}", response_model=TaskDetail)
     def get_task(task_id: str) -> TaskDetail:
         return service.get_task_detail(task_id)
+
+    @app.get("/tasks/{task_id}/diff", response_class=PlainTextResponse)
+    def get_task_diff(task_id: str) -> str:
+        return service.get_task_diff(task_id)
 
     @app.post("/tasks/{task_id}/approval", response_model=Task)
     def approve_task(task_id: str, payload: ApprovalRequest) -> Task:

@@ -88,6 +88,9 @@ class Run(BaseModel):
     cwd: str
     base_cwd: Optional[str] = None
     target_branch: Optional[str] = None
+    diff_path: Optional[str] = None
+    stdout_path: Optional[str] = None
+    stderr_path: Optional[str] = None
     structured_prompt: str
     status: TaskStatus = TaskStatus.PENDING
     exit_code: Optional[int] = None

@@ -216,6 +216,14 @@ def test_task_runs_in_worktree_and_applies_on_approval(tmp_path: Path) -> None:
     assert Path(run_payload["cwd"]).exists()
     assert not (project_root / "README.md").exists()
     assert (Path(run_payload["cwd"]) / "README.md").exists()
+    assert Path(run_payload["diff_path"]).exists()
+    assert Path(run_payload["stdout_path"]).exists()
+    assert Path(run_payload["stderr_path"]).exists()
+
+    diff_response = client.get(f"/tasks/{task_id}/diff")
+    assert diff_response.status_code == 200
+    assert "README.md" in diff_response.text
+    assert "Created from isolated worktree execution." in diff_response.text
 
     approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
     assert approval_response.status_code == 200

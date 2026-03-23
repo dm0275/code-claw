@@ -165,37 +165,38 @@ class WorkspaceManager:
                 detail="Base project has uncommitted changes; cannot apply task diff safely",
             )
 
-        stage_result = subprocess.run(
-            ["git", "add", "-A"],
-            cwd=str(workspace.worktree_root),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if stage_result.returncode != 0:
-            raise RuntimeError("Failed to stage task changes before approval")
-
-        diff = subprocess.run(
-            ["git", "diff", "--cached", "--binary", "HEAD"],
-            cwd=str(workspace.worktree_root),
-            capture_output=True,
-            text=False,
-            check=False,
-        )
-        if diff.returncode != 0:
-            raise RuntimeError("Failed to compute task diff")
-
-        if diff.stdout:
+        patch = self._build_task_patch(workspace)
+        if patch:
             apply_result = subprocess.run(
                 ["git", "apply", "--index", "--whitespace=nowarn", "-"],
                 cwd=str(workspace.base_root),
-                input=diff.stdout,
+                input=patch,
                 capture_output=True,
                 check=False,
             )
             if apply_result.returncode != 0:
                 stderr = apply_result.stderr.decode("utf-8", errors="replace").strip()
                 raise RuntimeError(stderr or "Failed to apply task diff")
+
+    def persist_task_artifacts(self, task_id: str, workspace: "TaskWorkspace", run: Run) -> Run:
+        """Write task logs and the staged patch to durable artifact files."""
+        artifact_dir = self.state_root / "artifacts" / task_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+
+        stdout_path = artifact_dir / "stdout.jsonl"
+        stderr_path = artifact_dir / "stderr.jsonl"
+        diff_path = artifact_dir / "diff.patch"
+
+        stdout_contents = "\n".join(run.stdout) + ("\n" if run.stdout else "")
+        stderr_contents = "\n".join(run.stderr) + ("\n" if run.stderr else "")
+        stdout_path.write_text(stdout_contents, encoding="utf-8")
+        stderr_path.write_text(stderr_contents, encoding="utf-8")
+        diff_path.write_bytes(self._build_task_patch(workspace))
+
+        run.stdout_path = str(stdout_path)
+        run.stderr_path = str(stderr_path)
+        run.diff_path = str(diff_path)
+        return run
 
     def cleanup_task_workspace(self, workspace: "TaskWorkspace") -> None:
         """Remove the task worktree and its temporary branch if one was created."""
@@ -246,6 +247,29 @@ class WorkspaceManager:
             check=False,
         )
         return bool(status_result.stdout.strip())
+
+    @staticmethod
+    def _build_task_patch(workspace: "TaskWorkspace") -> bytes:
+        stage_result = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(workspace.worktree_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if stage_result.returncode != 0:
+            raise RuntimeError("Failed to stage task changes before capturing artifacts")
+
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--binary", "HEAD"],
+            cwd=str(workspace.worktree_root),
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        if diff.returncode != 0:
+            raise RuntimeError("Failed to compute task diff")
+        return diff.stdout
 
 
 @dataclass
@@ -514,6 +538,9 @@ class TaskService:
 
         try:
             self.runner.execute(task, run, self.store, self.broker)
+            if run.status is TaskStatus.AWAITING_APPROVAL:
+                self.workspace_manager.persist_task_artifacts(task.id, task_workspace, run)
+                self.store.set_run(run)
         except Exception as exc:
             run.status = TaskStatus.FAILED
             run.exit_code = 1
@@ -535,6 +562,7 @@ class TaskService:
     def get_task_detail(self, task_id: str) -> TaskDetail:
         """Return the task, associated run, and recent task events."""
         task = self._require_task(task_id)
+        self._ensure_review_artifacts(task_id, task)
         return TaskDetail(
             task=task,
             run=self.store.get_run(task_id),
@@ -577,6 +605,19 @@ class TaskService:
         for event in self.broker.subscribe(task_id):
             yield self._format_sse(event)
 
+    def get_task_diff(self, task_id: str) -> str:
+        """Return the stored unified diff for a task."""
+        task = self._require_task(task_id)
+        self._ensure_review_artifacts(task_id, task)
+        run = self.store.get_run(task_id)
+        if run is None or not run.diff_path:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task diff not found")
+
+        diff_path = Path(run.diff_path)
+        if not diff_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task diff not found")
+        return diff_path.read_text(encoding="utf-8")
+
     def _require_task(self, task_id: str) -> Task:
         task = self.store.get_task(task_id)
         if task is None:
@@ -607,6 +648,18 @@ class TaskService:
         if workspace is None:
             return
         self.workspace_manager.cleanup_task_workspace(workspace)
+
+    def _ensure_review_artifacts(self, task_id: str, task: Task) -> None:
+        if task.status is not TaskStatus.AWAITING_APPROVAL:
+            return
+
+        run = self.store.get_run(task_id)
+        workspace = self.task_workspaces.get(task_id)
+        if run is None or workspace is None or run.diff_path:
+            return
+
+        self.workspace_manager.persist_task_artifacts(task_id, workspace, run)
+        self.store.set_run(run)
 
     @staticmethod
     def _format_sse(event: TaskEvent) -> str:
