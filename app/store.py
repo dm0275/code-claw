@@ -1,10 +1,37 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from datetime import datetime
 from threading import Lock
-from typing import Deque, Dict, List, Optional
+from typing import Deque, Dict, List, Optional, Protocol
 
-from app.models import Project, Run, Task, TaskEvent
+from app.models import ApprovalAction, Project, Run, Task, TaskEvent
+
+
+class Store(Protocol):
+    """Common storage interface for runtime state used by the task service."""
+
+    def list_projects(self) -> List[Project]: ...
+
+    def get_project(self, project_id: str) -> Optional[Project]: ...
+
+    def add_task(self, task: Task) -> Task: ...
+
+    def update_task(self, task: Task) -> Task: ...
+
+    def list_tasks(self) -> List[Task]: ...
+
+    def get_task(self, task_id: str) -> Optional[Task]: ...
+
+    def set_run(self, run: Run) -> Run: ...
+
+    def get_run(self, task_id: str) -> Optional[Run]: ...
+
+    def add_approval(self, task_id: str, action: ApprovalAction, created_at: datetime) -> None: ...
+
+    def add_event(self, event: TaskEvent) -> TaskEvent: ...
+
+    def list_events(self, task_id: str) -> List[TaskEvent]: ...
 
 
 class InMemoryStore:
@@ -49,6 +76,14 @@ class InMemoryStore:
     def get_run(self, task_id: str) -> Optional[Run]:
         with self._lock:
             return self.runs_by_task.get(task_id)
+
+    def add_approval(
+        self,
+        task_id: str,
+        action: ApprovalAction,
+        created_at: datetime,
+    ) -> None:
+        del task_id, action, created_at
 
     def add_event(self, event: TaskEvent) -> TaskEvent:
         with self._lock:

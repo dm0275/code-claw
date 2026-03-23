@@ -13,6 +13,7 @@ Overall state:
 - Project bootstrapped as a Python package with FastAPI
 - Initial backend API implemented
 - Predefined project registry introduced for execution safety
+- Postgres-backed persistence introduced for runtime state
 - Local developer workflow added
 - Baseline automated tests added and passing
 
@@ -45,7 +46,8 @@ Overall state:
 
 ### Task orchestration
 
-- In-memory store for predefined projects, tasks, runs, and recent task events
+- SQL-backed store for tasks, runs, and approvals
+- In-memory event fanout for recent task events
 - Prompt builder aligned to the PRD structure:
   - objective
   - project
@@ -87,6 +89,13 @@ Overall state:
 - Ruff configured for import sorting and basic lint checks
 - Mypy configured for package-level type checking on the backend app
 
+### Persistence
+
+- SQLAlchemy-based runtime persistence
+- PostgreSQL selected as the primary database target
+- SQLite-compatible test path for persistence tests
+- Local Postgres compose file pinned to `postgres:16.8-alpine`
+
 ## Verified
 
 The following has been validated locally:
@@ -95,6 +104,7 @@ The following has been validated locally:
 - FastAPI, Uvicorn, and Pydantic dependencies install correctly in the project virtualenv
 - Application imports successfully
 - Automated tests pass
+- SQL-backed task and run persistence works across store re-creation
 
 Most recent verification:
 
@@ -119,10 +129,10 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Persist workspaces, tasks, runs, and approvals to a database
+1. Add migrations and explicit schema evolution tooling
 2. Capture full diffs and durable artifacts from task execution
 3. Harden approval flow for dirty-base-repo and patch-conflict scenarios
-4. Add API tests around failure paths and invalid approvals
+4. Persist task events or formalize event-retention behavior
 5. Start the web UI once the execution contract stabilizes
 
 ## Change Log
@@ -139,4 +149,5 @@ Priority order:
 - Replaced the stubbed runner with a Codex CLI-backed executor
 - Added TOML-backed predefined project configuration
 - Added per-task git worktree isolation and approval-time patch application
+- Added SQL-backed persistence for tasks, runs, and approvals
 - Added this implementation progress tracker

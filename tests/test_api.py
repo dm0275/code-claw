@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
+
 from app.config import ProjectRegistry
+from app.db import ApprovalRow, init_db
 from app.main import create_app
-from app.models import Project, Run, Task, TaskEvent, TaskStatus, utc_now
+from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
+from app.sql_store import SqlStore
 from app.store import InMemoryStore
 
 
@@ -252,3 +257,35 @@ extra_constraints = ["Never edit generated files"]
     assert project.context.summary == "Local project summary"
     assert project.context.extra_constraints == ["Never edit generated files"]
     assert project.context.instructions == "Use the internal build harness before changing APIs."
+
+
+def test_sql_store_persists_tasks_runs_and_approvals(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    init_git_repo(project_root)
+
+    database_path = tmp_path / "codeclaw.db"
+    session_factory = init_db(f"sqlite+pysqlite:///{database_path}")
+    project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
+
+    store = SqlStore(projects=[project], session_factory=session_factory)
+    task = Task(project_id="demo", prompt="Persist me")
+    run = Run(task_id=task.id, cwd=str(project_root), structured_prompt="OBJECTIVE:\nPersist me")
+    store.add_task(task)
+    store.set_run(run)
+    store.add_approval(task.id, action=ApprovalAction.APPROVE, created_at=utc_now())
+
+    restarted_store = SqlStore(projects=[project], session_factory=session_factory)
+    persisted_task = restarted_store.get_task(task.id)
+    persisted_run = restarted_store.get_run(task.id)
+
+    assert persisted_task is not None
+    assert persisted_task.prompt == "Persist me"
+    assert persisted_run is not None
+    assert persisted_run.cwd == str(project_root)
+
+    with session_factory() as session:
+        approvals = session.query(ApprovalRow).filter(ApprovalRow.task_id == task.id).all()
+
+    assert len(approvals) == 1
+    assert approvals[0].action == "approve"

@@ -22,7 +22,7 @@ from app.models import (
     TaskStatus,
     utc_now,
 )
-from app.store import InMemoryStore
+from app.store import Store
 
 
 class EventBroker:
@@ -271,7 +271,7 @@ class CodexRunner:
     def __init__(self, binary: str = "codex") -> None:
         self.binary = binary
 
-    def execute(self, task: Task, run: Run, store: InMemoryStore, broker: EventBroker) -> None:
+    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
         """Execute Codex for a task and update run/task state from the result."""
         cwd = Path(run.cwd)
         self._publish_log(task.id, "Launching Codex CLI", store, broker)
@@ -301,7 +301,7 @@ class CodexRunner:
         cwd: Path,
         prompt: str,
         task_id: str,
-        store: InMemoryStore,
+        store: Store,
         broker: EventBroker,
     ) -> CodexCliResult:
         """Invoke `codex exec --json` and capture both streamed logs and final output."""
@@ -373,7 +373,7 @@ class CodexRunner:
         sink: list[str],
         task_id: str,
         event_type: str,
-        store: InMemoryStore,
+        store: Store,
         broker: EventBroker,
     ) -> None:
         if stream is None:
@@ -437,7 +437,7 @@ class CodexRunner:
         self,
         task_id: str,
         message: str,
-        store: InMemoryStore,
+        store: Store,
         broker: EventBroker,
     ) -> None:
         event = store.add_event(TaskEvent(task_id=task_id, type="log", message=message))
@@ -447,7 +447,7 @@ class CodexRunner:
         self,
         task_id: str,
         message: str,
-        store: InMemoryStore,
+        store: Store,
         broker: EventBroker,
     ) -> None:
         event = store.add_event(TaskEvent(task_id=task_id, type="status", message=message))
@@ -459,7 +459,7 @@ class TaskService:
 
     def __init__(
         self,
-        store: InMemoryStore,
+        store: Store,
         workspace_manager: WorkspaceManager,
         broker: EventBroker,
     ) -> None:
@@ -563,6 +563,7 @@ class TaskService:
         task.updated_at = utc_now()
         task.completed_at = utc_now()
         self.store.update_task(task)
+        self.store.add_approval(task.id, action, task.completed_at)
         self._publish(task.id, "status", event_message)
         self._cleanup_task_workspace(task_id)
         return task

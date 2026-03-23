@@ -33,9 +33,10 @@ This bootstrap includes:
 
 - FastAPI app skeleton
 - predefined project registry loaded from TOML
+- persisted task/run/approval state backed by SQLAlchemy
 - task creation and state transitions
-- in-memory orchestration and run tracking
 - per-task git worktree isolation
 - SSE task event stream
 
 Projects are loaded from `~/.codeclaw/config.toml` with optional per-project metadata under `~/.codeclaw/projects/<project-id>/`.
+Runtime state uses the database configured by `CODECLAW_DATABASE_URL` or `DATABASE_URL`, defaulting to the local Postgres container in [`compose.yaml`](compose.yaml).

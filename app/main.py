@@ -4,15 +4,17 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
 from app.config import ProjectRegistry
+from app.db import init_db
 from app.models import ApprovalRequest, Project, Task, TaskCreate, TaskDetail
 from app.services import EventBroker, TaskService, WorkspaceManager
-from app.store import InMemoryStore
+from app.sql_store import SqlStore
 
 
 def build_service() -> TaskService:
     """Build the default service graph from the user-managed project registry."""
     registry = ProjectRegistry.load()
-    store = InMemoryStore(projects=registry.projects)
+    session_factory = init_db()
+    store = SqlStore(projects=registry.projects, session_factory=session_factory)
     broker = EventBroker()
     return TaskService(store=store, workspace_manager=WorkspaceManager(), broker=broker)
 
