@@ -1,3 +1,5 @@
 .idea/
 
 venv
+code_claw.egg-info/
+__pycache__/
