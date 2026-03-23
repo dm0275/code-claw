@@ -15,17 +15,33 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
    pip install -e .
    ```
 
-2. Start the API:
+2. Start local Postgres:
+
+   ```bash
+   docker compose up -d postgres
+   ```
+
+3. Apply migrations:
+
+   ```bash
+   venv/bin/alembic upgrade head
+   ```
+
+4. Start the API:
 
    ```bash
    uvicorn app.main:app --reload
    ```
 
-3. Start local Postgres when working on persistence:
+## Common Tasks
 
-   ```bash
-   docker compose up -d postgres
-   ```
+```bash
+make db-up
+make db-migrate
+make run
+make lint
+make test
+```
 
 ## Current scope
 
@@ -34,6 +50,7 @@ This bootstrap includes:
 - FastAPI app skeleton
 - predefined project registry loaded from TOML
 - persisted task/run/approval state backed by SQLAlchemy
+- Alembic-based schema migrations
 - task creation and state transitions
 - per-task git worktree isolation
 - SSE task event stream

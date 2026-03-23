@@ -4,7 +4,7 @@ This document tracks what has been implemented from the PRD, what has been verif
 
 ## Current Status
 
-Date: 2026-03-22
+Date: 2026-03-23
 
 Phase in progress: Phase 1, Core Backend
 
@@ -14,8 +14,9 @@ Overall state:
 - Initial backend API implemented
 - Predefined project registry introduced for execution safety
 - Postgres-backed persistence introduced for runtime state
+- Alembic migration tooling introduced for schema evolution
 - Local developer workflow added
-- Baseline automated tests added and passing
+- Functional backend tests expanded and passing
 
 ## Implemented
 
@@ -80,6 +81,10 @@ Overall state:
 
 - `make install`
 - `make install-dev`
+- `make db-up`
+- `make db-down`
+- `make db-migrate`
+- `make db-current`
 - `make run`
 - `make lint`
 - `make test`
@@ -95,6 +100,7 @@ Overall state:
 - PostgreSQL selected as the primary database target
 - SQLite-compatible test path for persistence tests
 - Local Postgres compose file pinned to `postgres:16.8-alpine`
+- Alembic-based schema migrations with an initial runtime-state migration
 
 ## Verified
 
@@ -105,19 +111,21 @@ The following has been validated locally:
 - Application imports successfully
 - Automated tests pass
 - SQL-backed task and run persistence works across store re-creation
+- Alembic migration application works against a temporary SQLite database
 
 Most recent verification:
 
 - `make lint`
 - Result: passed
 - `make test`
-- Result: `3 passed`
+- Result: `10 passed`
+- `venv/bin/alembic upgrade head`
+- Result: passed against a temporary SQLite database
 
 ## Current Limitations
 
 These PRD items are not implemented yet:
 
-- Persistent storage
 - Diff extraction from real file changes
 - Artifact storage
 - Authentication
@@ -129,15 +137,15 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Add migrations and explicit schema evolution tooling
-2. Capture full diffs and durable artifacts from task execution
-3. Harden approval flow for dirty-base-repo and patch-conflict scenarios
-4. Persist task events or formalize event-retention behavior
+1. Capture full diffs and durable artifacts from task execution
+2. Harden approval flow for dirty-base-repo and patch-conflict scenarios
+3. Persist task events or formalize event-retention behavior
+4. Add a live-Postgres integration test path
 5. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
-### 2026-03-22
+### 2026-03-23
 
 - Created initial FastAPI backend scaffold
 - Added in-memory orchestration services
@@ -150,4 +158,6 @@ Priority order:
 - Added TOML-backed predefined project configuration
 - Added per-task git worktree isolation and approval-time patch application
 - Added SQL-backed persistence for tasks, runs, and approvals
+- Added expanded functional test coverage and DB lifecycle Make targets
+- Added Alembic migration tooling and the initial runtime-state migration
 - Added this implementation progress tracker
