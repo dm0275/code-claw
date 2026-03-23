@@ -4,6 +4,7 @@ Initial Phase 1 backend scaffold for the PRD in [`docs/PRD.md`](docs/PRD.md).
 
 Current implementation status is tracked in [`docs/IMPLEMENTATION_PROGRESS.md`](docs/IMPLEMENTATION_PROGRESS.md).
 Configuration is described in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+Modeling conventions are described in [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md).
 
 ## Run
 
