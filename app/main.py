@@ -10,6 +10,7 @@ from app.store import InMemoryStore
 
 
 def build_service() -> TaskService:
+    """Build the default service graph from the user-managed project registry."""
     registry = ProjectRegistry.load()
     store = InMemoryStore(projects=registry.projects)
     broker = EventBroker()
@@ -17,6 +18,7 @@ def build_service() -> TaskService:
 
 
 def create_app(task_service: TaskService | None = None) -> FastAPI:
+    """Create the FastAPI app and optionally inject a test-specific service."""
     service = task_service or build_service()
     app = FastAPI(title="CodeClaw API", version="0.1.0")
 

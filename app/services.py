@@ -26,6 +26,8 @@ from app.store import InMemoryStore
 
 
 class EventBroker:
+    """Fan out task events to any active SSE subscribers."""
+
     def __init__(self) -> None:
         self._streams: Dict[str, list[Queue[TaskEvent]]] = {}
 
@@ -51,6 +53,7 @@ class EventBroker:
 class PromptBuilder:
     @staticmethod
     def build(task: Task, project: Project) -> str:
+        """Build the structured prompt sent to Codex for a single task run."""
         sections = [
             "OBJECTIVE:",
             task.prompt,
@@ -86,10 +89,13 @@ class PromptBuilder:
 
 
 class WorkspaceManager:
+    """Prepare isolated git worktrees and apply approved task diffs safely."""
+
     def __init__(self, state_root: Path | None = None) -> None:
         self.state_root = state_root or Path.home() / ".codeclaw" / "state"
 
     def prepare(self, project: Project) -> Path:
+        """Validate that the configured project path exists and is a git repo."""
         root = project.root
         if not root.exists():
             raise HTTPException(
@@ -111,6 +117,7 @@ class WorkspaceManager:
         return root
 
     def prepare_task_workspace(self, project: Project, task_id: str) -> "TaskWorkspace":
+        """Create a per-task git worktree so execution never touches the base checkout."""
         root = self.prepare(project)
         ref = self._resolve_base_ref(project, root)
         worktree_root = self.state_root / "worktrees" / project.id / task_id
@@ -151,6 +158,7 @@ class WorkspaceManager:
         )
 
     def apply_task_changes(self, workspace: "TaskWorkspace") -> None:
+        """Apply the approved worktree diff back onto the base checkout."""
         if self._has_changes(workspace.base_root):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -190,6 +198,7 @@ class WorkspaceManager:
                 raise RuntimeError(stderr or "Failed to apply task diff")
 
     def cleanup_task_workspace(self, workspace: "TaskWorkspace") -> None:
+        """Remove the task worktree and its temporary branch if one was created."""
         subprocess.run(
             ["git", "worktree", "remove", "--force", str(workspace.worktree_root)],
             cwd=str(workspace.base_root),
@@ -257,10 +266,13 @@ class CodexCliResult:
 
 
 class CodexRunner:
+    """Run Codex non-interactively and translate its output into task artifacts."""
+
     def __init__(self, binary: str = "codex") -> None:
         self.binary = binary
 
     def execute(self, task: Task, run: Run, store: InMemoryStore, broker: EventBroker) -> None:
+        """Execute Codex for a task and update run/task state from the result."""
         cwd = Path(run.cwd)
         self._publish_log(task.id, "Launching Codex CLI", store, broker)
         result = self._run_codex(cwd, run.structured_prompt, task.id, store, broker)
@@ -292,6 +304,7 @@ class CodexRunner:
         store: InMemoryStore,
         broker: EventBroker,
     ) -> CodexCliResult:
+        """Invoke `codex exec --json` and capture both streamed logs and final output."""
         with NamedTemporaryFile(mode="w+", encoding="utf-8", suffix=".txt") as output_file:
             command = [
                 self.binary,
@@ -442,6 +455,8 @@ class CodexRunner:
 
 
 class TaskService:
+    """Own the task lifecycle from creation through approval or rejection."""
+
     def __init__(
         self,
         store: InMemoryStore,
@@ -456,9 +471,11 @@ class TaskService:
         self.task_workspaces: dict[str, TaskWorkspace] = {}
 
     def list_projects(self) -> list[Project]:
+        """Return the configured projects that this instance can execute against."""
         return self.store.list_projects()
 
     def create_task(self, payload: TaskCreate) -> Task:
+        """Create a task record and start execution in a background thread."""
         project = self.store.get_project(payload.project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -516,6 +533,7 @@ class TaskService:
         return self.store.list_tasks()
 
     def get_task_detail(self, task_id: str) -> TaskDetail:
+        """Return the task, associated run, and recent task events."""
         task = self._require_task(task_id)
         return TaskDetail(
             task=task,
@@ -524,6 +542,7 @@ class TaskService:
         )
 
     def approve_task(self, task_id: str, action: ApprovalAction) -> Task:
+        """Approve or reject a completed task and handle any resulting workspace actions."""
         task = self._require_task(task_id)
         if task.status != TaskStatus.AWAITING_APPROVAL:
             raise HTTPException(
@@ -549,6 +568,7 @@ class TaskService:
         return task
 
     def stream_task_events(self, task_id: str) -> Iterator[str]:
+        """Yield existing and live events as server-sent event payloads."""
         self._require_task(task_id)
         history = self.store.list_events(task_id)
         for event in history:

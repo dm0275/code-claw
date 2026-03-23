@@ -9,6 +9,7 @@ from app.models import Project, ProjectContext, ProjectExecution
 
 
 def default_config_root() -> Path:
+    """Return the root directory that stores local CodeClaw configuration."""
     configured = os.environ.get("CODECLAW_HOME")
     if configured:
         return Path(configured).expanduser().resolve()
@@ -16,11 +17,14 @@ def default_config_root() -> Path:
 
 
 class ProjectRegistry:
+    """Load and expose the set of projects the user has explicitly registered."""
+
     def __init__(self, projects: list[Project]) -> None:
         self.projects = projects
 
     @classmethod
     def load(cls, root: Path | None = None) -> "ProjectRegistry":
+        """Load global project registrations plus per-project metadata from TOML."""
         config_root = (root or default_config_root()).expanduser().resolve()
         registry_path = config_root / "config.toml"
         if not registry_path.exists():
@@ -38,6 +42,7 @@ class ProjectRegistry:
 
 
 def _build_project(config_root: Path, defaults: dict[str, Any], item: dict[str, Any]) -> Project:
+    """Merge registry defaults with per-project config and instructions."""
     project_id = str(item["id"])
     project_dir = Path(item.get("project_dir", config_root / "projects" / project_id)).expanduser()
 
@@ -79,6 +84,7 @@ def _build_project(config_root: Path, defaults: dict[str, Any], item: dict[str, 
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
+    """Read a TOML file into a plain dict."""
     with path.open("rb") as handle:
         data = tomllib.load(handle)
     return data if isinstance(data, dict) else {}
