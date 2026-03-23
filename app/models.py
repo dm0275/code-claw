@@ -86,6 +86,8 @@ class Run(BaseModel):
     id: str = Field(default_factory=new_id)
     task_id: str
     cwd: str
+    base_cwd: Optional[str] = None
+    target_branch: Optional[str] = None
     structured_prompt: str
     status: TaskStatus = TaskStatus.PENDING
     exit_code: Optional[int] = None

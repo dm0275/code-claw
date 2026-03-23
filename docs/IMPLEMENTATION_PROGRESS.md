@@ -66,9 +66,12 @@ Overall state:
 
 - Project path validation
 - Codex CLI runner wired through `codex exec --json`
+- Per-task git worktree creation before execution
 - Real-time stdout and stderr streaming into task events
 - Final agent message captured as task summary
 - Changed files collected from `git status --short`
+- Approval applies the isolated task diff back to the base project checkout
+- Reject and failure paths clean up task worktrees
 - SSE-compatible event formatting for live task updates
 
 ### Developer workflow
@@ -105,10 +108,8 @@ Most recent verification:
 These PRD items are not implemented yet:
 
 - Persistent storage
-- Git branch or sandbox management per task
 - Diff extraction from real file changes
 - Artifact storage
-- Approval-gated application of changes
 - Authentication
 - Metrics and observability
 - Web UI
@@ -119,11 +120,10 @@ These PRD items are not implemented yet:
 Priority order:
 
 1. Persist workspaces, tasks, runs, and approvals to a database
-2. Add per-project sandbox or per-task branch preparation
-3. Capture full diffs and durable artifacts from task execution
-4. Extend approval flow so approved changes can be applied safely
-5. Add API tests around failure paths and invalid approvals
-6. Start the web UI once the execution contract stabilizes
+2. Capture full diffs and durable artifacts from task execution
+3. Harden approval flow for dirty-base-repo and patch-conflict scenarios
+4. Add API tests around failure paths and invalid approvals
+5. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -138,4 +138,5 @@ Priority order:
 - Added Ruff and Mypy lint workflow
 - Replaced the stubbed runner with a Codex CLI-backed executor
 - Added TOML-backed predefined project configuration
+- Added per-task git worktree isolation and approval-time patch application
 - Added this implementation progress tracker

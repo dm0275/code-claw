@@ -27,6 +27,7 @@ This bootstrap includes:
 - predefined project registry loaded from TOML
 - task creation and state transitions
 - in-memory orchestration and run tracking
+- per-task git worktree isolation
 - SSE task event stream
 
 Projects are loaded from `~/.codeclaw/config.toml` with optional per-project metadata under `~/.codeclaw/projects/<project-id>/`.

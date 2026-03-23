@@ -86,6 +86,9 @@ class PromptBuilder:
 
 
 class WorkspaceManager:
+    def __init__(self, state_root: Path | None = None) -> None:
+        self.state_root = state_root or Path.home() / ".codeclaw" / "state"
+
     def prepare(self, project: Project) -> Path:
         root = project.root
         if not root.exists():
@@ -93,7 +96,155 @@ class WorkspaceManager:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Workspace path does not exist: {root}",
             )
+        git_check = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if git_check.returncode != 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Project path is not a git repository: {root}",
+            )
         return root
+
+    def prepare_task_workspace(self, project: Project, task_id: str) -> "TaskWorkspace":
+        root = self.prepare(project)
+        ref = self._resolve_base_ref(project, root)
+        worktree_root = self.state_root / "worktrees" / project.id / task_id
+        worktree_root.parent.mkdir(parents=True, exist_ok=True)
+        if worktree_root.exists():
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree_root)],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        branch_name: str | None = None
+        command = ["git", "worktree", "add"]
+        if project.execution.auto_create_branch:
+            branch_name = self._branch_name(project, task_id)
+            command.extend(["-b", branch_name])
+        else:
+            command.append("--detach")
+        command.extend([str(worktree_root), ref])
+        result = subprocess.run(
+            command,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "Failed to create worktree"
+            raise RuntimeError(message)
+
+        return TaskWorkspace(
+            base_root=root,
+            worktree_root=worktree_root,
+            ref=ref,
+            branch_name=branch_name,
+        )
+
+    def apply_task_changes(self, workspace: "TaskWorkspace") -> None:
+        if self._has_changes(workspace.base_root):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Base project has uncommitted changes; cannot apply task diff safely",
+            )
+
+        stage_result = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(workspace.worktree_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if stage_result.returncode != 0:
+            raise RuntimeError("Failed to stage task changes before approval")
+
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--binary", "HEAD"],
+            cwd=str(workspace.worktree_root),
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        if diff.returncode != 0:
+            raise RuntimeError("Failed to compute task diff")
+
+        if diff.stdout:
+            apply_result = subprocess.run(
+                ["git", "apply", "--index", "--whitespace=nowarn", "-"],
+                cwd=str(workspace.base_root),
+                input=diff.stdout,
+                capture_output=True,
+                check=False,
+            )
+            if apply_result.returncode != 0:
+                stderr = apply_result.stderr.decode("utf-8", errors="replace").strip()
+                raise RuntimeError(stderr or "Failed to apply task diff")
+
+    def cleanup_task_workspace(self, workspace: "TaskWorkspace") -> None:
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(workspace.worktree_root)],
+            cwd=str(workspace.base_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if workspace.branch_name:
+            subprocess.run(
+                ["git", "branch", "-D", workspace.branch_name],
+                cwd=str(workspace.base_root),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    @staticmethod
+    def _resolve_base_ref(project: Project, root: Path) -> str:
+        if project.default_branch:
+            return project.default_branch
+
+        branch = subprocess.run(
+            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if branch.returncode == 0:
+            return branch.stdout.strip()
+        return "HEAD"
+
+    @staticmethod
+    def _branch_name(project: Project, task_id: str) -> str:
+        prefix = project.execution.branch_prefix or f"codeclaw/{project.id}"
+        return f"{prefix}/{task_id[:8]}"
+
+    @staticmethod
+    def _has_changes(root: Path) -> bool:
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return bool(status_result.stdout.strip())
+
+
+@dataclass
+class TaskWorkspace:
+    base_root: Path
+    worktree_root: Path
+    ref: str
+    branch_name: str | None = None
 
 
 @dataclass
@@ -302,6 +453,7 @@ class TaskService:
         self.broker = broker
         self.prompt_builder = PromptBuilder()
         self.runner = CodexRunner()
+        self.task_workspaces: dict[str, TaskWorkspace] = {}
 
     def list_projects(self) -> list[Project]:
         return self.store.list_projects()
@@ -330,9 +482,13 @@ class TaskService:
         self._publish(task.id, "status", "Task is running")
 
         structured_prompt = self.prompt_builder.build(task, project)
+        task_workspace = self.workspace_manager.prepare_task_workspace(project, task.id)
+        self.task_workspaces[task.id] = task_workspace
         run = Run(
             task_id=task.id,
-            cwd=project.path,
+            cwd=str(task_workspace.worktree_root),
+            base_cwd=str(task_workspace.base_root),
+            target_branch=task_workspace.branch_name,
             structured_prompt=structured_prompt,
             status=TaskStatus.RUNNING,
         )
@@ -354,6 +510,7 @@ class TaskService:
             task.completed_at = utc_now()
             self.store.update_task(task)
             self._publish(task.id, "error", f"Task failed: {exc}")
+            self._cleanup_task_workspace(task.id)
 
     def list_tasks(self) -> list[Task]:
         return self.store.list_tasks()
@@ -375,6 +532,7 @@ class TaskService:
             )
 
         if action is ApprovalAction.APPROVE:
+            self._apply_task_changes(task_id)
             task.status = TaskStatus.COMPLETED
             task.summary = "Approved. Changes can now be applied in the workspace pipeline."
             event_message = "Task approved"
@@ -387,6 +545,7 @@ class TaskService:
         task.completed_at = utc_now()
         self.store.update_task(task)
         self._publish(task.id, "status", event_message)
+        self._cleanup_task_workspace(task_id)
         return task
 
     def stream_task_events(self, task_id: str) -> Iterator[str]:
@@ -412,6 +571,21 @@ class TaskService:
     def _publish(self, task_id: str, event_type: str, message: str) -> None:
         event = self.store.add_event(TaskEvent(task_id=task_id, type=event_type, message=message))
         self.broker.publish(event)
+
+    def _apply_task_changes(self, task_id: str) -> None:
+        workspace = self.task_workspaces.get(task_id)
+        if workspace is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Task workspace is no longer available",
+            )
+        self.workspace_manager.apply_task_changes(workspace)
+
+    def _cleanup_task_workspace(self, task_id: str) -> None:
+        workspace = self.task_workspaces.pop(task_id, None)
+        if workspace is None:
+            return
+        self.workspace_manager.cleanup_task_workspace(workspace)
 
     @staticmethod
     def _format_sse(event: TaskEvent) -> str:
