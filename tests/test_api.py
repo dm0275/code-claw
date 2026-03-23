@@ -16,11 +16,11 @@ from app.main import create_app
 from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
-from app.store import InMemoryStore
+from app.store import InMemoryStore, Store
 
 
 class InstantRunner:
-    def execute(self, task: Task, run: Run, store: InMemoryStore, broker: EventBroker) -> None:
+    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
         run.stdout.append("runner executed")
         run.status = TaskStatus.AWAITING_APPROVAL
         run.exit_code = 0
@@ -44,7 +44,7 @@ class InstantRunner:
 
 
 class WorktreeRunner:
-    def execute(self, task: Task, run: Run, store: InMemoryStore, broker: EventBroker) -> None:
+    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
         readme_path = Path(run.cwd) / "README.md"
         readme_path.write_text(
             "# Demo\n\nCreated from isolated worktree execution.\n",
@@ -71,6 +71,11 @@ class WorktreeRunner:
                 )
             )
         )
+
+
+class FailingRunner:
+    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
+        raise RuntimeError("runner exploded")
 
 
 def init_git_repo(project_root: Path) -> None:
@@ -107,6 +112,29 @@ def make_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
     return client, service, project_root
 
 
+def make_sql_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    init_git_repo(project_root)
+
+    database_path = tmp_path / "codeclaw.db"
+    session_factory = init_db(f"sqlite+pysqlite:///{database_path}")
+    project = Project(
+        id="demo",
+        name="Demo",
+        path=str(project_root),
+        default_branch="main",
+    )
+    store = SqlStore(projects=[project], session_factory=session_factory)
+    broker = EventBroker()
+    workspace_manager = WorkspaceManager(state_root=tmp_path / "state")
+    service = TaskService(store=store, workspace_manager=workspace_manager, broker=broker)
+    service.runner = InstantRunner()
+
+    client = TestClient(create_app(service))
+    return client, service, project_root
+
+
 def wait_for_status(
     client: TestClient,
     task_id: str,
@@ -121,6 +149,15 @@ def wait_for_status(
             return payload
         time.sleep(0.01)
     raise AssertionError(f"Task {task_id} did not reach status {expected_status}")
+
+
+def wait_for_path_absence(path: Path, timeout_seconds: float = 1.0) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if not path.exists():
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"Path {path} still exists")
 
 
 def test_healthcheck(tmp_path: Path) -> None:
@@ -185,6 +222,63 @@ def test_task_runs_in_worktree_and_applies_on_approval(tmp_path: Path) -> None:
     assert approval_response.json()["status"] == "completed"
     assert (project_root / "README.md").exists()
     assert not Path(run_payload["cwd"]).exists()
+
+
+def test_task_reject_cleans_up_worktree_without_touching_base_repo(tmp_path: Path) -> None:
+    client, service, project_root = make_context(tmp_path)
+    service.runner = WorktreeRunner()
+
+    task_id = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Create a README"},
+    ).json()["id"]
+
+    detail = wait_for_status(client, task_id, "awaiting_approval")
+    run_payload = detail["run"]
+    assert not (project_root / "README.md").exists()
+
+    reject_response = client.post(f"/tasks/{task_id}/approval", json={"action": "reject"})
+    assert reject_response.status_code == 200
+    assert reject_response.json()["status"] == "rejected"
+    assert not (project_root / "README.md").exists()
+    assert not Path(run_payload["cwd"]).exists()
+
+
+def test_failed_runner_marks_task_failed_and_cleans_up_worktree(tmp_path: Path) -> None:
+    client, service, _ = make_context(tmp_path)
+    service.runner = FailingRunner()
+
+    task_id = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Fail this task"},
+    ).json()["id"]
+
+    detail = wait_for_status(client, task_id, "failed")
+    run_payload = detail["run"]
+    assert detail["task"]["summary"] == "runner exploded"
+    assert run_payload["exit_code"] == 1
+    wait_for_path_absence(Path(run_payload["cwd"]))
+
+
+def test_approval_conflict_when_base_repo_is_dirty(tmp_path: Path) -> None:
+    client, service, project_root = make_context(tmp_path)
+    service.runner = WorktreeRunner()
+
+    task_id = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Create a README"},
+    ).json()["id"]
+
+    detail = wait_for_status(client, task_id, "awaiting_approval")
+    run_payload = detail["run"]
+
+    (project_root / "local.txt").write_text("dirty\n", encoding="utf-8")
+    approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
+
+    assert approval_response.status_code == 409
+    assert "uncommitted changes" in approval_response.json()["detail"]
+    assert not (project_root / "README.md").exists()
+    assert Path(run_payload["cwd"]).exists()
 
 
 def test_event_stream_includes_task_history(tmp_path: Path) -> None:
@@ -289,3 +383,30 @@ def test_sql_store_persists_tasks_runs_and_approvals(tmp_path: Path) -> None:
 
     assert len(approvals) == 1
     assert approvals[0].action == "approve"
+
+
+def test_sql_backed_service_reloads_task_history(tmp_path: Path) -> None:
+    client, _, project_root = make_sql_context(tmp_path)
+
+    task_response = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Persist through API"},
+    )
+    task_id = task_response.json()["id"]
+    detail = wait_for_status(client, task_id, "awaiting_approval")
+
+    database_path = tmp_path / "codeclaw.db"
+    session_factory = init_db(f"sqlite+pysqlite:///{database_path}")
+    project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
+    restarted_store = SqlStore(projects=[project], session_factory=session_factory)
+    restarted_service = TaskService(
+        store=restarted_store,
+        workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
+        broker=EventBroker(),
+    )
+
+    reloaded_detail = restarted_service.get_task_detail(task_id)
+    assert reloaded_detail.task.prompt == "Persist through API"
+    assert reloaded_detail.run is not None
+    assert reloaded_detail.run.task_id == task_id
+    assert detail["task"]["id"] == reloaded_detail.task.id
