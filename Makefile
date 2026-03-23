@@ -5,8 +5,9 @@ RUFF := venv/bin/ruff
 MYPY := venv/bin/mypy
 UVICORN := venv/bin/uvicorn
 DOCKER_COMPOSE := docker compose
+ALEMBIC := venv/bin/alembic
 
-.PHONY: install install-dev run run-dev lint test db-up db-down db-logs db-ps
+.PHONY: install install-dev run run-dev lint test db-up db-down db-logs db-ps db-migrate db-current
 
 install:
 	$(PIP) install -e .
@@ -38,3 +39,9 @@ db-logs:
 
 db-ps:
 	$(DOCKER_COMPOSE) ps
+
+db-migrate:
+	$(ALEMBIC) upgrade head
+
+db-current:
+	$(ALEMBIC) current

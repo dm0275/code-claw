@@ -80,7 +80,12 @@ def make_session_factory(url: str | None = None) -> sessionmaker[Session]:
 
 
 def init_db(url: str | None = None) -> sessionmaker[Session]:
-    """Initialize database tables and return a ready-to-use session factory."""
+    """Return a ready-to-use session factory for an already-migrated database."""
+    return make_session_factory(url)
+
+
+def create_all_tables(url: str | None = None) -> sessionmaker[Session]:
+    """Create all ORM tables directly for isolated tests and temporary bootstraps."""
     session_factory = make_session_factory(url)
     Base.metadata.create_all(session_factory.kw["bind"])
     return session_factory

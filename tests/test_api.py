@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 from app.config import ProjectRegistry
-from app.db import ApprovalRow, init_db
+from app.db import ApprovalRow, create_all_tables, init_db
 from app.main import create_app
 from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
@@ -118,7 +118,7 @@ def make_sql_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
     init_git_repo(project_root)
 
     database_path = tmp_path / "codeclaw.db"
-    session_factory = init_db(f"sqlite+pysqlite:///{database_path}")
+    session_factory = create_all_tables(f"sqlite+pysqlite:///{database_path}")
     project = Project(
         id="demo",
         name="Demo",
@@ -359,7 +359,7 @@ def test_sql_store_persists_tasks_runs_and_approvals(tmp_path: Path) -> None:
     init_git_repo(project_root)
 
     database_path = tmp_path / "codeclaw.db"
-    session_factory = init_db(f"sqlite+pysqlite:///{database_path}")
+    session_factory = create_all_tables(f"sqlite+pysqlite:///{database_path}")
     project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
 
     store = SqlStore(projects=[project], session_factory=session_factory)
