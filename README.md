@@ -5,6 +5,7 @@ Initial Phase 1 backend scaffold for the PRD in [`docs/PRD.md`](docs/PRD.md).
 Current implementation status is tracked in [`docs/IMPLEMENTATION_PROGRESS.md`](docs/IMPLEMENTATION_PROGRESS.md).
 Configuration is described in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 Modeling conventions are described in [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md).
+Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERSISTENCE_DECISION.md).
 
 ## Run
 
@@ -18,6 +19,12 @@ Modeling conventions are described in [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHIT
 
    ```bash
    uvicorn app.main:app --reload
+   ```
+
+3. Start local Postgres when working on persistence:
+
+   ```bash
+   docker compose up -d postgres
    ```
 
 ## Current scope
