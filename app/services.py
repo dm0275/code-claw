@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from app.models import Project, ProjectRegistration, Task, TaskCreate, TaskDetail
 from app.project_service import ProjectService
-from app.runtime import CodexRunner, EventBroker, PromptBuilder, TaskRuntime, WorkspaceManager
+from app.runtime import (
+    ArtifactManager,
+    CodexRunner,
+    EventBroker,
+    PromptBuilder,
+    TaskRuntime,
+    WorkspaceManager,
+)
 from app.store import Store
 
 
@@ -26,6 +33,7 @@ class TaskService:
         self.runtime = TaskRuntime(
             store=store,
             workspace_manager=workspace_manager,
+            artifact_manager=ArtifactManager(workspace_manager.state_root),
             broker=broker,
             prompt_builder=PromptBuilder(),
             runner=CodexRunner(),
