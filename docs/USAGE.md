@@ -15,9 +15,7 @@ From the repository root:
 
 ```bash
 make install-dev
-make db-up
-make db-migrate
-make run
+make start
 ```
 
 The API listens on `http://127.0.0.1:8000` by default.

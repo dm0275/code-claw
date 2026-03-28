@@ -9,7 +9,7 @@ ALEMBIC := venv/bin/alembic
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install install-dev run run-dev lint test test-integration db-up db-down db-logs db-ps db-migrate db-current
+.PHONY: help install install-dev start run run-dev lint test test-integration db-up db-down db-logs db-ps db-migrate db-current
 
 help: ## List available make targets
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_-]+:.*## / {printf "%-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -19,6 +19,9 @@ install: ## Install the package in editable mode
 
 install-dev: ## Install the package with development dependencies
 	$(PIP) install -e ".[dev]"
+
+start: db-up db-migrate ## Start local Postgres, apply migrations, and run the API
+	$(UVICORN) app.main:app --reload
 
 run: ## Start the API with auto-reload
 	$(UVICORN) app.main:app --reload

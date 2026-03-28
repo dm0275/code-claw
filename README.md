@@ -17,11 +17,10 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
    make install-dev
    ```
 
-2. Start local Postgres and apply migrations:
+2. Start local Postgres, apply migrations, and run the API:
 
    ```bash
-   make db-up
-   make db-migrate
+   make start
    ```
 
 3. Register at least one local git repository through the API.
@@ -29,13 +28,7 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
    See [`docs/USAGE.md`](docs/USAGE.md) for the `POST /projects` flow and
    [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the underlying config layout.
 
-4. Start the API:
-
-   ```bash
-   make run
-   ```
-
-5. Read [`docs/USAGE.md`](docs/USAGE.md) for the actual task lifecycle:
+4. Read [`docs/USAGE.md`](docs/USAGE.md) for the actual task lifecycle:
 
 - creating a task
 - following task status and live events
@@ -45,6 +38,7 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
 ## Common Tasks
 
 ```bash
+make start
 make db-up
 make db-migrate
 make run
