@@ -187,10 +187,12 @@ class TaskRuntime:
 
         try:
             result = self.runner.execute(task, run, self.broker)
-            self._apply_runner_result(task, run, result, approval_required=approval_required)
+            review_required = self._requires_review(result, approval_required)
+            self._apply_runner_result(task, run, result, approval_required=review_required)
             if result.exit_code == 0:
-                self._persist_review_artifacts(task.id, task, task_workspace, run)
-                if approval_required:
+                if result.files_modified:
+                    self._persist_review_artifacts(task.id, task, task_workspace, run)
+                if review_required:
                     return
                 self._complete_without_approval(task, run, task_workspace)
                 return
@@ -387,3 +389,8 @@ class TaskRuntime:
     def _success_status(approval_required: bool) -> TaskStatus:
         """Return the steady-state success status for the current approval policy."""
         return TaskStatus.AWAITING_APPROVAL if approval_required else TaskStatus.COMPLETED
+
+    @staticmethod
+    def _requires_review(result: RunnerResult, approval_required: bool) -> bool:
+        """Require review only when policy requires it and the run produced changes."""
+        return approval_required and bool(result.files_modified)

@@ -55,6 +55,26 @@ class FailingRunner:
         raise RuntimeError("runner exploded")
 
 
+class AnswerRunner:
+    def execute(self, task: Task, run: Run, broker: EventBroker) -> RunnerResult:
+        broker.publish(
+            TaskEvent(
+                task_id=task.id,
+                type="log",
+                message="answer runner returned a no-change response",
+            )
+        )
+        return RunnerResult(
+            exit_code=0,
+            summary=(
+                "You can sort a dictionary by value with "
+                "`sorted(data.items(), key=lambda item: item[1])`."
+            ),
+            stdout=["answer runner completed without modifying the workspace"],
+            files_modified=[],
+        )
+
+
 def init_git_repo(project_root: Path) -> None:
     subprocess.run(["git", "init", "-b", "main"], cwd=project_root, check=True)
     subprocess.run(["git", "config", "user.name", "CodeClaw Tests"], cwd=project_root, check=True)

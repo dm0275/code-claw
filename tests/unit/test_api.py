@@ -20,6 +20,7 @@ from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 from app.store import InMemoryStore
 from tests.support import (
+    AnswerRunner,
     FailingRunner,
     InstantRunner,
     WorktreeRunner,
@@ -258,6 +259,33 @@ def test_task_can_complete_without_approval_in_place(tmp_path: Path) -> None:
     event_messages = [event.message for event in service.store.list_events(task_id)]
     assert "Task completed" in event_messages
     assert "PROJECT:" in detail["run"]["structured_prompt"]
+    approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
+    assert approval_response.status_code == 409
+
+
+def test_task_can_complete_without_changes_even_when_approval_is_required(tmp_path: Path) -> None:
+    client, service, _ = make_context(tmp_path)
+    service.runner = AnswerRunner()
+
+    task_response = client.post(
+        "/tasks",
+        json={
+            "project_id": "demo",
+            "prompt": "How do you sort a dictionary by value in Python?",
+        },
+    )
+    assert task_response.status_code == 201
+
+    task_id = task_response.json()["id"]
+    detail = wait_for_status(client, task_id, "completed")
+    assert "sorted(data.items()" in detail["task"]["summary"]
+    assert detail["task"]["files_modified"] == []
+    assert detail["run"]["exit_code"] == 0
+    assert detail["run"]["diff_path"] is None
+
+    diff_response = client.get(f"/tasks/{task_id}/diff")
+    assert diff_response.status_code == 404
+
     approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
     assert approval_response.status_code == 409
 
