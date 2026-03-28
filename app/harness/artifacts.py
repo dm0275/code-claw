@@ -24,7 +24,7 @@ class ArtifactManager:
     """
 
     def __init__(self, state_root: Path | None = None) -> None:
-        self.state_root = state_root or Path.home() / ".codeclaw" / "state"
+        self.state_root = state_root or Path.home() / ".harness" / "state"
 
     def persist_task_artifacts(self, task_id: str, workspace: TaskWorkspace, run: Run) -> Run:
         """Write task logs and the staged patch to durable artifact files.

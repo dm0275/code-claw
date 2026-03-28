@@ -14,8 +14,8 @@ from app.harness import (
 )
 ```
 
-CodeClaw uses these exports through its own service layer, but the package is
-structured so other applications can import the same contracts directly.
+The package can be used directly by any host application that wants a reusable
+agent-execution workflow around a local workspace.
 """
 
 from app.harness.artifacts import ArtifactManager

@@ -24,11 +24,12 @@ class TaskWorkspace:
 class WorkspaceManager:
     """Prepare isolated git worktrees and apply approved task diffs safely.
 
-    This is the default workspace strategy for CodeClaw-style review flows.
+    This is the default workspace strategy for review flows that want isolated
+    temporary workspaces before applying approved changes back to a base checkout.
     """
 
     def __init__(self, state_root: Path | None = None) -> None:
-        self.state_root = state_root or Path.home() / ".codeclaw" / "state"
+        self.state_root = state_root or Path.home() / ".harness" / "state"
 
     def prepare(self, target: ExecutionTarget) -> Path:
         """Validate that the configured target path exists and is a git repo."""
@@ -48,7 +49,7 @@ class WorkspaceManager:
         if git_check.returncode != 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Project path is not a git repository: {root}",
+                detail=f"Target path is not a git repository: {root}",
             )
         return root
 
@@ -157,7 +158,7 @@ class WorkspaceManager:
 
     @staticmethod
     def _branch_name(target: ExecutionTarget, task_id: str) -> str:
-        prefix = target.execution.branch_prefix or f"codeclaw/{target.id}"
+        prefix = target.execution.branch_prefix or f"task/{target.id}"
         return f"{prefix}/{task_id[:8]}"
 
     @staticmethod

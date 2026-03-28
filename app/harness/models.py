@@ -1,7 +1,7 @@
 """Public data models used by the reusable harness.
 
 These dataclasses define the harness-facing contract so callers do not need to
-depend on CodeClaw's project-registration model just to execute a task.
+depend on a host application's project-registration model just to execute a task.
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ class TargetExecutionSettings:
 class ExecutionTarget:
     """A harness-native execution target with a required filesystem path.
 
-    External consumers can construct this directly instead of adapting to
-    CodeClaw's `Project` model.
+    External consumers can construct this directly instead of adapting to a
+    host application's project model.
     """
 
     id: str

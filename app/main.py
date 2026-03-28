@@ -26,7 +26,7 @@ def build_service() -> TaskService:
     session_factory = make_session_factory()
     store = SqlStore(projects=registry.projects, session_factory=session_factory)
     broker = EventBroker()
-    workspace_manager = WorkspaceManager()
+    workspace_manager = WorkspaceManager(state_root=config_root / "state")
     return TaskService(
         store=store,
         workspace_manager=workspace_manager,
