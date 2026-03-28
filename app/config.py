@@ -5,7 +5,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from app.models import Project, ProjectContext, ProjectExecution, ProjectRegistration
+from app.api_models import ProjectRegistration
+from app.models import Project, ProjectContext, ProjectExecution
 
 
 def default_config_root() -> Path:

@@ -9,10 +9,11 @@ from sqlalchemy import text
 
 os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
+from app.api_models import ProjectRegistration
 from app.config import ProjectRegistry, ProjectRegistryManager
 from app.db import ApprovalRow, TaskEventRow, create_all_tables, init_db
 from app.main import create_app
-from app.models import ApprovalAction, Project, ProjectRegistration, Run, Task, TaskEvent, utc_now
+from app.models import ApprovalAction, Project, Run, Task, TaskEvent, utc_now
 from app.project_service import ProjectService
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore

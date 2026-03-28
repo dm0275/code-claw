@@ -12,16 +12,14 @@ from typing import Any, Dict, Iterator, TextIO
 from fastapi import HTTPException, status
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
-from app.models import (
-    ApprovalAction,
-    Project,
-    Run,
-    Task,
-    TaskCreate,
-    TaskDetail,
-    TaskEvent,
-    TaskStatus,
-    utc_now,
+from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, utc_now
+from app.runtime_models import TaskSnapshot, TaskSubmission
+from app.runtime_protocols import (
+    ArtifactManagerProtocol,
+    EventBrokerProtocol,
+    PromptBuilderProtocol,
+    RunnerProtocol,
+    WorkspaceManagerProtocol,
 )
 from app.store import Store
 
@@ -499,29 +497,40 @@ class TaskRuntime:
     def __init__(
         self,
         store: Store,
-        workspace_manager: WorkspaceManager,
-        broker: EventBroker,
-        artifact_manager: ArtifactManager | None = None,
-        prompt_builder: PromptBuilder | None = None,
-        runner: CodexRunner | None = None,
+        workspace_manager: WorkspaceManagerProtocol,
+        broker: EventBrokerProtocol,
+        artifact_manager: ArtifactManagerProtocol | None = None,
+        prompt_builder: PromptBuilderProtocol | None = None,
+        runner: RunnerProtocol | None = None,
     ) -> None:
         self.store = store
         self.workspace_manager = workspace_manager
-        self.artifact_manager = artifact_manager or ArtifactManager(workspace_manager.state_root)
+        if artifact_manager is None:
+            if not isinstance(workspace_manager, WorkspaceManager):
+                raise TypeError(
+                    "artifact_manager is required when workspace_manager is not WorkspaceManager"
+                )
+            artifact_manager = ArtifactManager(workspace_manager.state_root)
+        self.artifact_manager = artifact_manager
         self.broker = broker
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.runner = runner or CodexRunner()
         self.task_workspaces: dict[str, TaskWorkspace] = {}
         self._artifact_locks: dict[str, Lock] = {}
 
-    def create_task(self, payload: TaskCreate) -> Task:
+    def create_task(self, submission: TaskSubmission) -> Task:
         """Create a task record and start execution in a background thread."""
-        project = self.store.get_project(payload.project_id)
+        project = self.store.get_project(submission.project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
         self.workspace_manager.prepare(project)
-        task = Task(**payload.model_dump())
+        task = Task(
+            project_id=submission.project_id,
+            prompt=submission.prompt,
+            constraints=list(submission.constraints),
+            acceptance_criteria=list(submission.acceptance_criteria),
+        )
         self.store.add_task(task)
         self._publish(task.id, "status", "Task created")
 
@@ -532,11 +541,11 @@ class TaskRuntime:
     def list_tasks(self) -> list[Task]:
         return self.store.list_tasks()
 
-    def get_task_detail(self, task_id: str) -> TaskDetail:
+    def get_task_detail(self, task_id: str) -> TaskSnapshot:
         """Return the task, associated run, and recent task events."""
         task = self._require_task(task_id)
         self._ensure_review_artifacts(task_id, task)
-        return TaskDetail(
+        return TaskSnapshot(
             task=task,
             run=self.store.get_run(task_id),
             recent_events=self.store.list_events(task_id),

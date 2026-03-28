@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.models import Project, ProjectRegistration, Task, TaskCreate, TaskDetail
+from app.api_models import ProjectRegistration, TaskCreate, TaskDetail
+from app.models import Project, Task
 from app.project_service import ProjectService
 from app.runtime import (
     ArtifactManager,
@@ -10,6 +11,8 @@ from app.runtime import (
     TaskRuntime,
     WorkspaceManager,
 )
+from app.runtime_models import TaskSnapshot, TaskSubmission
+from app.runtime_protocols import RunnerProtocol
 from app.store import Store
 
 
@@ -40,11 +43,11 @@ class TaskService:
         )
 
     @property
-    def runner(self) -> CodexRunner:
+    def runner(self) -> RunnerProtocol:
         return self.runtime.runner
 
     @runner.setter
-    def runner(self, value: CodexRunner) -> None:
+    def runner(self, value: RunnerProtocol) -> None:
         self.runtime.runner = value
 
     def list_projects(self) -> list[Project]:
@@ -60,13 +63,20 @@ class TaskService:
         return self.project_service.register_project(payload)
 
     def create_task(self, payload: TaskCreate) -> Task:
-        return self.runtime.create_task(payload)
+        return self.runtime.create_task(
+            TaskSubmission(
+                project_id=payload.project_id,
+                prompt=payload.prompt,
+                constraints=list(payload.constraints),
+                acceptance_criteria=list(payload.acceptance_criteria),
+            )
+        )
 
     def list_tasks(self) -> list[Task]:
         return self.runtime.list_tasks()
 
     def get_task_detail(self, task_id: str) -> TaskDetail:
-        return self.runtime.get_task_detail(task_id)
+        return self._build_task_detail(self.runtime.get_task_detail(task_id))
 
     def approve_task(self, task_id: str, action) -> Task:
         return self.runtime.approve_task(task_id, action)
@@ -82,6 +92,14 @@ class TaskService:
 
     def get_task_stderr(self, task_id: str) -> str:
         return self.runtime.get_task_stderr(task_id)
+
+    @staticmethod
+    def _build_task_detail(detail: TaskSnapshot) -> TaskDetail:
+        return TaskDetail(
+            task=detail.task,
+            run=detail.run,
+            recent_events=detail.recent_events,
+        )
 
 
 __all__ = ["EventBroker", "TaskService", "WorkspaceManager"]
