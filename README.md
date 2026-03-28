@@ -32,6 +32,7 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
 4. Read [`docs/USAGE.md`](docs/USAGE.md) for the actual task lifecycle:
 
 - creating a task
+- choosing `change` vs `response` task mode
 - following task status and live events
 - reviewing `diff`, `stdout`, and `stderr`
 - approving or rejecting the task
@@ -66,6 +67,11 @@ The current backend exposes:
 - `GET /tasks/{task_id}/stderr`
 - `POST /tasks/{task_id}/approval`
 - `GET /tasks/{task_id}/events`
+
+`POST /tasks` supports two task modes:
+
+- `change` for repository-editing work
+- `response` for answer-only tasks that should not modify files
 
 ## Current scope
 

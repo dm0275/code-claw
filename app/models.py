@@ -31,6 +31,11 @@ class ApprovalAction(str, Enum):
     REJECT = "reject"
 
 
+class TaskMode(str, Enum):
+    CHANGE = "change"
+    RESPONSE = "response"
+
+
 class ProjectExecution(BaseModel):
     sandbox: str = "workspace-write"
     approval_required: bool = True
@@ -65,6 +70,7 @@ class Task(BaseModel):
     id: str = Field(default_factory=new_id)
     project_id: str
     prompt: str
+    mode: TaskMode = TaskMode.CHANGE
     constraints: List[str] = Field(default_factory=list)
     acceptance_criteria: List[str] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING

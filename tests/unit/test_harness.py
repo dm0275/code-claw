@@ -19,7 +19,7 @@ from app.harness import (
     TaskSubmission,
     WorkspaceManager,
 )
-from app.models import ApprovalAction, Task, TaskEvent, TaskStatus
+from app.models import ApprovalAction, Task, TaskEvent, TaskMode, TaskStatus
 from app.store import InMemoryStore
 from tests.support import AnswerRunner, WorktreeRunner, init_git_repo
 
@@ -93,6 +93,21 @@ def test_prompt_builder_includes_target_context_and_task_details(tmp_path: Path)
     assert f"- Path: {target.path}" in prompt
 
 
+def test_prompt_builder_omits_file_change_output_for_response_mode(tmp_path: Path) -> None:
+    target = make_target(tmp_path)
+    task = Task(
+        project_id=target.id,
+        prompt="Who is the first president of the United States?",
+        mode=TaskMode.RESPONSE,
+    )
+
+    prompt = PromptBuilder.build(task, target)
+
+    assert "TASK MODE:" in prompt
+    assert "Response only. Do not modify files in the workspace." in prompt
+    assert "- List of files changed" not in prompt
+
+
 def test_event_broker_removes_subscriber_after_close() -> None:
     broker = EventBroker()
     stream = broker.subscribe("task-1")
@@ -159,7 +174,11 @@ def test_task_runtime_completes_answer_only_task_against_dirty_base_repo(tmp_pat
     )
 
     task = runtime.create_task(
-        TaskSubmission(target_id=target.id, prompt="How do you sort a dictionary by value?")
+        TaskSubmission(
+            target_id=target.id,
+            prompt="How do you sort a dictionary by value?",
+            mode=TaskMode.RESPONSE,
+        )
     )
     snapshot = wait_for_task_status(runtime, task.id, TaskStatus.COMPLETED)
 
@@ -170,6 +189,30 @@ def test_task_runtime_completes_answer_only_task_against_dirty_base_repo(tmp_pat
     assert snapshot.run.diff_path is None
     assert (project_root / "LOCAL_NOTES.txt").exists()
     assert task.id not in runtime.task_workspaces
+
+
+def test_task_runtime_fails_response_mode_when_runner_modifies_files(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    init_git_repo(project_root)
+
+    target = make_target(project_root, approval_required=True)
+    runtime = TaskRuntime(
+        store=InMemoryStore(),
+        target_resolver=StaticTargetResolver(target),
+        workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
+        broker=EventBroker(),
+        runner=WorktreeRunner(),
+    )
+
+    task = runtime.create_task(
+        TaskSubmission(target_id=target.id, prompt="Answer directly", mode=TaskMode.RESPONSE)
+    )
+    snapshot = wait_for_task_status(runtime, task.id, TaskStatus.FAILED)
+
+    assert snapshot.task.summary is not None
+    assert "Response-mode tasks must not modify files" in snapshot.task.summary
+    assert not (project_root / "README.md").exists()
 
 
 def test_task_runtime_awaits_approval_and_applies_changes(tmp_path: Path) -> None:

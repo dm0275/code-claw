@@ -94,6 +94,7 @@ curl -s -X POST http://127.0.0.1:8000/tasks \
   -H 'content-type: application/json' \
   -d '{
     "project_id": "code-claw",
+    "mode": "change",
     "prompt": "Document the Makefile targets",
     "constraints": ["Only touch Markdown files"],
     "acceptance_criteria": ["README explains the new targets"]
@@ -101,6 +102,23 @@ curl -s -X POST http://127.0.0.1:8000/tasks \
 ```
 
 The response contains the new task record, including its `id`.
+
+Task modes:
+
+- `change`: default mode for repo-editing tasks. These can produce diffs and may require approval before changes are applied.
+- `response`: answer-only mode. These should complete without file changes or approval.
+
+Example response-only task:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/tasks \
+  -H 'content-type: application/json' \
+  -d '{
+    "project_id": "code-claw",
+    "mode": "response",
+    "prompt": "Who was the first president of the United States?"
+  }'
+```
 
 ## 5. Follow Task Progress
 
@@ -151,7 +169,7 @@ Typical event types include:
 
 ## 7. Review Generated Artifacts
 
-Once a task reaches `awaiting_approval`, CodeClaw has captured durable review artifacts.
+Once a `change` task reaches `awaiting_approval`, CodeClaw has captured durable review artifacts.
 
 Get the patch:
 
@@ -172,6 +190,7 @@ curl -s http://127.0.0.1:8000/tasks/<task-id>/stderr
 ```
 
 These endpoints return plain text and respond with `404` if the artifact is not available.
+That is expected for `response` tasks because they should not produce diffs.
 
 ## 8. Approve Or Reject A Task
 
@@ -214,13 +233,15 @@ The current backend flow is:
 3. Build a structured prompt from the task plus project metadata.
 4. Run Codex in the isolated worktree.
 5. Capture task events plus durable review artifacts.
-6. Wait for explicit approval before applying changes to the base checkout.
+6. For `change` tasks, wait for explicit approval before applying changes to the base checkout.
+7. For `response` tasks, complete immediately if the runner produces no file changes.
 
 Important operational constraints:
 
 - CodeClaw does not execute against arbitrary paths.
 - The target project must already be a git repository.
-- The base checkout must be clean before approval can apply changes.
+- `response` tasks must not modify files. The harness fails them if the runner edits the workspace.
+- The base checkout must be clean before approval can apply changes for `change` tasks.
 - Task event history, runs, approvals, and artifacts are durable.
 
 ## 10. Run Tests

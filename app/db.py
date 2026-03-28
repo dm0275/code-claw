@@ -31,6 +31,7 @@ class TaskRow(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     project_id: Mapped[str] = mapped_column(String(120), index=True)
     prompt: Mapped[str] = mapped_column(String)
+    mode: Mapped[str] = mapped_column(String(32), default="change")
     constraints: Mapped[list[str]] = mapped_column(JSON)
     acceptance_criteria: Mapped[list[str]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(32), index=True)

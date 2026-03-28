@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.harness.models import ExecutionTarget
-from app.models import Task
+from app.models import Task, TaskMode
 
 
 class PromptBuilder:
@@ -24,6 +24,11 @@ class PromptBuilder:
             "OBJECTIVE:",
             task.prompt,
             "",
+            "TASK MODE:",
+            "Response only. Do not modify files in the workspace."
+            if task.mode is TaskMode.RESPONSE
+            else "Change task. Make the requested workspace updates if needed.",
+            "",
             "PROJECT:",
             f"- Name: {target.name or target.id}",
             f"- Path: {target.path}",
@@ -42,13 +47,8 @@ class PromptBuilder:
             sections.extend(f"- {item}" for item in task.acceptance_criteria)
         if target.context.instructions:
             sections.extend(["", "ADDITIONAL INSTRUCTIONS:", target.context.instructions])
-        sections.extend(
-            [
-                "",
-                "OUTPUT:",
-                "- Summary",
-                "- List of files changed",
-                "- Execution log",
-            ]
-        )
+        sections.extend(["", "OUTPUT:", "- Summary"])
+        if task.mode is TaskMode.CHANGE:
+            sections.append("- List of files changed")
+        sections.append("- Execution log")
         return "\n".join(sections)

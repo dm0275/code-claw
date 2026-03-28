@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.models import Run, Task, TaskEvent
+from app.models import Run, Task, TaskEvent, TaskMode
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,7 @@ class TaskSubmission:
 
     target_id: str
     prompt: str
+    mode: TaskMode = TaskMode.CHANGE
     constraints: list[str] = field(default_factory=list)
     acceptance_criteria: list[str] = field(default_factory=list)
 

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import ApprovalRow, RunRow, TaskEventRow, TaskRow, session_scope
-from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, new_id
+from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskMode, TaskStatus, new_id
 
 
 class SqlStore:
@@ -118,6 +118,7 @@ def _task_row_from_model(task: Task) -> TaskRow:
         id=task.id,
         project_id=task.project_id,
         prompt=task.prompt,
+        mode=task.mode.value,
         constraints=task.constraints,
         acceptance_criteria=task.acceptance_criteria,
         status=task.status.value,
@@ -134,6 +135,7 @@ def _task_model_from_row(row: TaskRow) -> Task:
         id=row.id,
         project_id=row.project_id,
         prompt=row.prompt,
+        mode=TaskMode(row.mode),
         constraints=list(row.constraints or []),
         acceptance_criteria=list(row.acceptance_criteria or []),
         status=TaskStatus(row.status),

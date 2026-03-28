@@ -273,6 +273,7 @@ def test_task_can_complete_without_changes_even_when_approval_is_required(tmp_pa
         json={
             "project_id": "demo",
             "prompt": "How do you sort a dictionary by value in Python?",
+            "mode": "response",
         },
     )
     assert task_response.status_code == 201
@@ -280,9 +281,11 @@ def test_task_can_complete_without_changes_even_when_approval_is_required(tmp_pa
     task_id = task_response.json()["id"]
     detail = wait_for_status(client, task_id, "completed")
     assert "sorted(data.items()" in detail["task"]["summary"]
+    assert detail["task"]["mode"] == "response"
     assert detail["task"]["files_modified"] == []
     assert detail["run"]["exit_code"] == 0
     assert detail["run"]["diff_path"] is None
+    assert "- List of files changed" not in detail["run"]["structured_prompt"]
     assert (project_root / "LOCAL_NOTES.txt").exists()
 
     diff_response = client.get(f"/tasks/{task_id}/diff")
@@ -290,6 +293,28 @@ def test_task_can_complete_without_changes_even_when_approval_is_required(tmp_pa
 
     approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
     assert approval_response.status_code == 409
+
+
+def test_response_mode_rejects_runner_file_changes(tmp_path: Path) -> None:
+    client, service, project_root = make_context(tmp_path)
+    service.runner = WorktreeRunner()
+
+    task_response = client.post(
+        "/tasks",
+        json={
+            "project_id": "demo",
+            "prompt": "Who is the first president of the United States?",
+            "mode": "response",
+        },
+    )
+    assert task_response.status_code == 201
+
+    task_id = task_response.json()["id"]
+    detail = wait_for_status(client, task_id, "failed")
+    assert detail["task"]["mode"] == "response"
+    assert "Response-mode tasks must not modify files" in detail["task"]["summary"]
+    assert detail["run"]["exit_code"] == 1
+    assert not (project_root / "README.md").exists()
 
 
 def test_task_runs_in_worktree_and_applies_on_approval(tmp_path: Path) -> None:

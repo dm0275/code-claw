@@ -12,6 +12,7 @@ from app.models import (
     Run,
     Task,
     TaskEvent,
+    TaskMode,
 )
 
 
@@ -27,6 +28,7 @@ class ProjectRegistration(BaseModel):
 class TaskCreate(BaseModel):
     project_id: str = Field(validation_alias=AliasChoices("project_id", "workspace_id"))
     prompt: str = Field(min_length=1)
+    mode: TaskMode = TaskMode.CHANGE
     constraints: List[str] = Field(default_factory=list)
     acceptance_criteria: List[str] = Field(default_factory=list)
 

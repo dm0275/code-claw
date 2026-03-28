@@ -32,7 +32,7 @@ from app.harness.protocols import (
 )
 from app.harness.runners import CodexRunner
 from app.harness.workspace import TaskWorkspace, WorkspaceManager
-from app.models import ApprovalAction, Run, Task, TaskEvent, TaskStatus, utc_now
+from app.models import ApprovalAction, Run, Task, TaskEvent, TaskMode, TaskStatus, utc_now
 from app.store import Store
 
 
@@ -85,6 +85,7 @@ class TaskRuntime:
         task = Task(
             project_id=submission.target_id,
             prompt=submission.prompt,
+            mode=submission.mode,
             constraints=list(submission.constraints),
             acceptance_criteria=list(submission.acceptance_criteria),
         )
@@ -187,6 +188,7 @@ class TaskRuntime:
 
         try:
             result = self.runner.execute(task, run, self.broker)
+            self._validate_result_for_task_mode(task, result)
             review_required = self._requires_review(result, approval_required)
             self._apply_runner_result(task, run, result, approval_required=review_required)
             if result.exit_code == 0:
@@ -402,3 +404,12 @@ class TaskRuntime:
     def _requires_review(result: RunnerResult, approval_required: bool) -> bool:
         """Require review only when policy requires it and the run produced changes."""
         return approval_required and bool(result.files_modified)
+
+    @staticmethod
+    def _validate_result_for_task_mode(task: Task, result: RunnerResult) -> None:
+        """Reject runner output that violates the task's requested mode."""
+        if task.mode is TaskMode.RESPONSE and result.files_modified:
+            raise RuntimeError(
+                "Response-mode tasks must not modify files. Re-run as mode='change' "
+                "if workspace edits are intended."
+            )

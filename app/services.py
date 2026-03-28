@@ -72,6 +72,7 @@ class TaskService:
             TaskSubmission(
                 target_id=payload.project_id,
                 prompt=payload.prompt,
+                mode=payload.mode,
                 constraints=list(payload.constraints),
                 acceptance_criteria=list(payload.acceptance_criteria),
             )
