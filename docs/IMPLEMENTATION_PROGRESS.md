@@ -4,7 +4,7 @@ This document tracks what has been implemented from the PRD, what has been verif
 
 ## Current Status
 
-Date: 2026-03-23
+Date: 2026-03-28
 
 Phase in progress: Phase 1, Core Backend
 
@@ -15,6 +15,7 @@ Overall state:
 - Predefined project registry introduced for execution safety
 - Postgres-backed persistence introduced for runtime state
 - Alembic migration tooling introduced for schema evolution
+- Durable task artifact capture introduced for review and auditability
 - Local developer workflow added
 - Functional backend tests expanded and passing
 
@@ -42,6 +43,7 @@ Overall state:
 - `GET /tasks`
 - `POST /tasks`
 - `GET /tasks/{task_id}`
+- `GET /tasks/{task_id}/diff`
 - `POST /tasks/{task_id}/approval`
 - `GET /tasks/{task_id}/events`
 
@@ -73,6 +75,10 @@ Overall state:
 - Real-time stdout and stderr streaming into task events
 - Final agent message captured as task summary
 - Changed files collected from `git status --short`
+- Durable artifact capture for:
+  - `diff.patch`
+  - `stdout.jsonl`
+  - `stderr.jsonl`
 - Approval applies the isolated task diff back to the base project checkout
 - Reject and failure paths clean up task worktrees
 - SSE-compatible event formatting for live task updates
@@ -100,7 +106,8 @@ Overall state:
 - PostgreSQL selected as the primary database target
 - SQLite-compatible test path for persistence tests
 - Local Postgres compose file pinned to `postgres:16.8-alpine`
-- Alembic-based schema migrations with an initial runtime-state migration
+- Alembic-based schema migrations for runtime state and run artifact metadata
+- Artifact file storage rooted under `~/.codeclaw/state/artifacts/`
 
 ## Verified
 
@@ -126,21 +133,21 @@ Most recent verification:
 
 These PRD items are not implemented yet:
 
-- Diff extraction from real file changes
-- Artifact storage
 - Authentication
 - Metrics and observability
 - Web UI
 - Docker-based isolation
+- Live Postgres integration test path
+- Durable task event persistence
 
 ## Next Recommended Work
 
 Priority order:
 
-1. Capture full diffs and durable artifacts from task execution
-2. Harden approval flow for dirty-base-repo and patch-conflict scenarios
-3. Persist task events or formalize event-retention behavior
-4. Add a live-Postgres integration test path
+1. Add a live-Postgres integration test path
+2. Harden approval flow for patch-conflict and unmigrated-database failure reporting
+3. Persist task events or explicitly keep them ephemeral with documented retention behavior
+4. Expose durable stdout and stderr artifacts through the API if the UI needs them
 5. Start the web UI once the execution contract stabilizes
 
 ## Change Log
@@ -161,3 +168,11 @@ Priority order:
 - Added expanded functional test coverage and DB lifecycle Make targets
 - Added Alembic migration tooling and the initial runtime-state migration
 - Added this implementation progress tracker
+
+### 2026-03-28
+
+- Added durable task artifact capture for diffs and Codex output logs
+- Added `GET /tasks/{task_id}/diff`
+- Added Alembic migration for run artifact paths
+- Renamed migration files to ordered `0001_...` and `0002_...` format
+- Refreshed README and progress documentation to match the current backend
