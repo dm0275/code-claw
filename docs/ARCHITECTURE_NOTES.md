@@ -2,6 +2,8 @@
 
 This document captures small but important implementation rules that should stay consistent as the codebase grows.
 
+The higher-level boundary between the reusable Codex harness and the CodeClaw-specific app shell is documented in [CODEX_HARNESS_BOUNDARY.md](/Users/dmancilla/git/code-claw/docs/CODEX_HARNESS_BOUNDARY.md).
+
 ## Model Types
 
 CodeClaw intentionally uses both Pydantic `BaseModel` types and Python `dataclass` types, but they serve different purposes.

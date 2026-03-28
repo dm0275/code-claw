@@ -7,6 +7,7 @@ End-to-end local usage is described in [`docs/USAGE.md`](docs/USAGE.md).
 Configuration is described in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 Project onboarding direction is described in [`docs/PROJECT_REGISTRATION_PLAN.md`](docs/PROJECT_REGISTRATION_PLAN.md).
 Modeling conventions are described in [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md).
+Reusable-runtime boundary notes are described in [`docs/CODEX_HARNESS_BOUNDARY.md`](docs/CODEX_HARNESS_BOUNDARY.md).
 Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERSISTENCE_DECISION.md).
 
 ## Quickstart

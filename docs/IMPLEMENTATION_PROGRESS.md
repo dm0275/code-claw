@@ -144,6 +144,7 @@ Most recent verification:
 
 These PRD items are not implemented yet:
 
+- Clear extraction of the reusable Codex harness from the CodeClaw app shell
 - Authentication
 - Metrics and observability
 - Web UI
@@ -153,7 +154,8 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Start the web UI once the execution contract stabilizes
+1. Refactor toward a reusable Codex harness boundary inside the repository
+2. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -186,3 +188,4 @@ Priority order:
 - Added API endpoints for durable stdout and stderr task artifacts
 - Documented the decision to separate local project registration from optional future clone/import support
 - Added local project registration endpoints and config persistence for existing git repositories
+- Documented the intended reusable Codex harness boundary versus the CodeClaw-specific app shell
