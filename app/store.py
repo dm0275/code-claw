@@ -27,6 +27,15 @@ class Store(Protocol):
 
     def get_run(self, task_id: str) -> Optional[Run]: ...
 
+    def ensure_approval_persistence_ready(self) -> None: ...
+
+    def finalize_approval(
+        self,
+        task: Task,
+        action: ApprovalAction,
+        created_at: datetime,
+    ) -> Task: ...
+
     def add_approval(self, task_id: str, action: ApprovalAction, created_at: datetime) -> None: ...
 
     def add_event(self, event: TaskEvent) -> TaskEvent: ...
@@ -76,6 +85,20 @@ class InMemoryStore:
     def get_run(self, task_id: str) -> Optional[Run]:
         with self._lock:
             return self.runs_by_task.get(task_id)
+
+    def ensure_approval_persistence_ready(self) -> None:
+        return None
+
+    def finalize_approval(
+        self,
+        task: Task,
+        action: ApprovalAction,
+        created_at: datetime,
+    ) -> Task:
+        del action, created_at
+        with self._lock:
+            self.tasks[task.id] = task
+            return task
 
     def add_approval(
         self,

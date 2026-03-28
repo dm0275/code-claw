@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
@@ -196,6 +198,62 @@ def test_approval_conflict_when_base_repo_is_dirty(tmp_path: Path) -> None:
     assert "uncommitted changes" in approval_response.json()["detail"]
     assert not (project_root / "README.md").exists()
     assert Path(run_payload["cwd"]).exists()
+
+
+def test_approval_conflict_reports_patch_apply_failure(tmp_path: Path) -> None:
+    client, service, project_root = make_context(tmp_path)
+    service.runner = WorktreeRunner()
+
+    task_id = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Create a README"},
+    ).json()["id"]
+
+    detail = wait_for_status(client, task_id, "awaiting_approval")
+    run_payload = detail["run"]
+
+    (project_root / "README.md").write_text(
+        "# Base\n\nConflicting change in the base checkout.\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "README.md"], cwd=project_root, check=True)
+    subprocess.run(["git", "commit", "-m", "Add conflicting README"], cwd=project_root, check=True)
+
+    approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
+
+    assert approval_response.status_code == 409
+    assert "Patch conflict while applying task diff" in approval_response.json()["detail"]
+    assert Path(run_payload["cwd"]).exists()
+
+
+def test_approval_reports_unmigrated_database_before_applying_changes(tmp_path: Path) -> None:
+    client, service, project_root = make_sql_context(tmp_path)
+    service.runner = WorktreeRunner()
+
+    task_id = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Create a README"},
+    ).json()["id"]
+
+    detail = wait_for_status(client, task_id, "awaiting_approval")
+    run_payload = detail["run"]
+    assert not (project_root / "README.md").exists()
+
+    session_factory = service.store.session_factory
+    engine = session_factory.kw["bind"]
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE approvals"))
+
+    approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
+
+    assert approval_response.status_code == 503
+    assert "database schema is out of date" in approval_response.json()["detail"]
+    assert not (project_root / "README.md").exists()
+    assert Path(run_payload["cwd"]).exists()
+
+    refreshed = client.get(f"/tasks/{task_id}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["task"]["status"] == "awaiting_approval"
 
 
 def test_event_stream_includes_task_history(tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ from threading import Thread
 from typing import Any, Dict, Iterator, TextIO
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
 from app.models import (
     ApprovalAction,
@@ -176,7 +177,14 @@ class WorkspaceManager:
             )
             if apply_result.returncode != 0:
                 stderr = apply_result.stderr.decode("utf-8", errors="replace").strip()
-                raise RuntimeError(stderr or "Failed to apply task diff")
+                detail = stderr or "Failed to apply task diff"
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Patch conflict while applying task diff to the base project. "
+                        f"{detail}"
+                    ),
+                )
 
     def persist_task_artifacts(self, task_id: str, workspace: "TaskWorkspace", run: Run) -> Run:
         """Write task logs and the staged patch to durable artifact files."""
@@ -579,6 +587,7 @@ class TaskService:
             )
 
         if action is ApprovalAction.APPROVE:
+            self._ensure_approval_persistence_ready()
             self._apply_task_changes(task_id)
             task.status = TaskStatus.COMPLETED
             task.summary = "Approved. Changes can now be applied in the workspace pipeline."
@@ -590,8 +599,10 @@ class TaskService:
 
         task.updated_at = utc_now()
         task.completed_at = utc_now()
-        self.store.update_task(task)
-        self.store.add_approval(task.id, action, task.completed_at)
+        try:
+            self.store.finalize_approval(task, action, task.completed_at)
+        except (OperationalError, ProgrammingError, DBAPIError) as exc:
+            raise self._translate_approval_persistence_error(exc) from exc
         self._publish(task.id, "status", event_message)
         self._cleanup_task_workspace(task_id)
         return task
@@ -643,6 +654,12 @@ class TaskService:
             )
         self.workspace_manager.apply_task_changes(workspace)
 
+    def _ensure_approval_persistence_ready(self) -> None:
+        try:
+            self.store.ensure_approval_persistence_ready()
+        except (OperationalError, ProgrammingError, DBAPIError) as exc:
+            raise self._translate_approval_persistence_error(exc) from exc
+
     def _cleanup_task_workspace(self, task_id: str) -> None:
         workspace = self.task_workspaces.pop(task_id, None)
         if workspace is None:
@@ -665,3 +682,29 @@ class TaskService:
     def _format_sse(event: TaskEvent) -> str:
         payload = json.dumps(event.model_dump(mode="json"))
         return f"event: {event.type}\ndata: {payload}\n\n"
+
+    @staticmethod
+    def _translate_approval_persistence_error(exc: Exception) -> HTTPException:
+        message = str(exc).lower()
+        indicators = [
+            "no such table",
+            "undefinedtable",
+            "does not exist",
+            "has no column named",
+            "no column named",
+            "undefined column",
+            "unknown column",
+            "relation",
+        ]
+        if any(token in message for token in indicators):
+            return HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Approval persistence failed because the runtime database schema is out "
+                    "of date. Run `make db-migrate` and retry the approval."
+                ),
+            )
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Approval persistence failed unexpectedly.",
+        )

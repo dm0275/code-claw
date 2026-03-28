@@ -128,7 +128,7 @@ Most recent verification:
 - `make test`
 - Result: `10 passed`
 - `make test-integration`
-- Result: blocked locally because the Docker daemon was not running
+- Result: `1 passed`
 - `venv/bin/alembic upgrade head`
 - Result: passed against a temporary SQLite database
 

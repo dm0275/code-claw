@@ -5,6 +5,7 @@ from datetime import datetime
 from threading import Lock
 from typing import Deque
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import ApprovalRow, RunRow, TaskRow, session_scope
@@ -55,6 +56,30 @@ class SqlStore:
         with session_scope(self.session_factory) as session:
             row = session.query(RunRow).filter(RunRow.task_id == task_id).one_or_none()
             return _run_model_from_row(row) if row else None
+
+    def ensure_approval_persistence_ready(self) -> None:
+        with session_scope(self.session_factory) as session:
+            session.execute(select(TaskRow.id).limit(1)).scalar_one_or_none()
+            session.execute(select(ApprovalRow.id).limit(1)).scalar_one_or_none()
+
+    def finalize_approval(
+        self,
+        task: Task,
+        action: ApprovalAction,
+        created_at: datetime,
+    ) -> Task:
+        with session_scope(self.session_factory) as session:
+            session.merge(_task_row_from_model(task))
+            session.add(
+                ApprovalRow(
+                    id=new_id(),
+                    task_id=task.id,
+                    action=action.value,
+                    approved=action is ApprovalAction.APPROVE,
+                    created_at=created_at,
+                )
+            )
+        return task
 
     def add_approval(
         self,
