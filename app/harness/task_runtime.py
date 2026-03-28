@@ -194,7 +194,12 @@ class TaskRuntime:
                     self._persist_review_artifacts(task.id, task, task_workspace, run)
                 if review_required:
                     return
-                self._complete_without_approval(task, run, task_workspace)
+                self._complete_without_approval(
+                    task,
+                    run,
+                    task_workspace,
+                    apply_changes=bool(result.files_modified),
+                )
                 return
         except Exception as exc:
             run.status = TaskStatus.FAILED
@@ -266,9 +271,12 @@ class TaskRuntime:
         task: Task,
         run: Run,
         workspace: TaskWorkspace,
+        *,
+        apply_changes: bool,
     ) -> None:
         """Apply and finalize a successful task when approval is disabled."""
-        self.workspace_manager.apply_task_changes(workspace)
+        if apply_changes:
+            self.workspace_manager.apply_task_changes(workspace)
         task.status = TaskStatus.COMPLETED
         task.updated_at = utc_now()
         task.completed_at = utc_now()

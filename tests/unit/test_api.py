@@ -264,8 +264,9 @@ def test_task_can_complete_without_approval_in_place(tmp_path: Path) -> None:
 
 
 def test_task_can_complete_without_changes_even_when_approval_is_required(tmp_path: Path) -> None:
-    client, service, _ = make_context(tmp_path)
+    client, service, project_root = make_context(tmp_path)
     service.runner = AnswerRunner()
+    (project_root / "LOCAL_NOTES.txt").write_text("dirty checkout\n", encoding="utf-8")
 
     task_response = client.post(
         "/tasks",
@@ -282,6 +283,7 @@ def test_task_can_complete_without_changes_even_when_approval_is_required(tmp_pa
     assert detail["task"]["files_modified"] == []
     assert detail["run"]["exit_code"] == 0
     assert detail["run"]["diff_path"] is None
+    assert (project_root / "LOCAL_NOTES.txt").exists()
 
     diff_response = client.get(f"/tasks/{task_id}/diff")
     assert diff_response.status_code == 404
