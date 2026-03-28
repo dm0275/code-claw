@@ -6,8 +6,8 @@ from fastapi import HTTPException, status
 
 from app.api_models import ProjectRegistration
 from app.config import ProjectRegistryManager
+from app.harness import WorkspaceManager
 from app.models import Project
-from app.runtime import WorkspaceManager
 from app.store import Store
 
 

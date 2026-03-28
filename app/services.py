@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from app.api_models import ProjectRegistration, TaskCreate, TaskDetail
-from app.models import Project, Task
-from app.project_service import ProjectService
-from app.runtime import (
+from app.harness import (
     ArtifactManager,
     CodexRunner,
     EventBroker,
     PromptBuilder,
+    RunnerProtocol,
     TaskRuntime,
     WorkspaceManager,
 )
-from app.runtime_models import TaskSnapshot, TaskSubmission
-from app.runtime_protocols import RunnerProtocol
+from app.harness.models import TaskSnapshot, TaskSubmission
+from app.models import Project, Task
+from app.project_service import ProjectService
 from app.store import Store
 
 

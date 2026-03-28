@@ -7,8 +7,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.harness import EventBroker
 from app.models import Run, Task, TaskEvent, TaskStatus, utc_now
-from app.services import EventBroker
 from app.store import Store
 
 
