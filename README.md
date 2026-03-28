@@ -3,35 +3,42 @@
 Initial Phase 1 backend scaffold for the PRD in [`docs/PRD.md`](docs/PRD.md).
 
 Current implementation status is tracked in [`docs/IMPLEMENTATION_PROGRESS.md`](docs/IMPLEMENTATION_PROGRESS.md).
+End-to-end local usage is described in [`docs/USAGE.md`](docs/USAGE.md).
 Configuration is described in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 Modeling conventions are described in [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md).
 Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERSISTENCE_DECISION.md).
 
-## Run
+## Quickstart
 
-1. Install dependencies:
-
-   ```bash
-   pip install -e .
-   ```
-
-2. Start local Postgres:
+1. Install dependencies and developer tooling:
 
    ```bash
-   docker compose up -d postgres
+   make install-dev
    ```
 
-3. Apply migrations:
+2. Start local Postgres and apply migrations:
 
    ```bash
-   venv/bin/alembic upgrade head
+   make db-up
+   make db-migrate
    ```
+
+3. Register at least one allowed project in `~/.codeclaw/config.toml`.
+
+   See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the config layout.
 
 4. Start the API:
 
    ```bash
-   uvicorn app.main:app --reload
+   make run
    ```
+
+5. Read [`docs/USAGE.md`](docs/USAGE.md) for the actual task lifecycle:
+
+- creating a task
+- following task status and live events
+- reviewing `diff`, `stdout`, and `stderr`
+- approving or rejecting the task
 
 ## Common Tasks
 
@@ -46,6 +53,21 @@ make test-integration
 
 `make test-integration` starts the local Postgres container if needed, creates a temporary database, applies Alembic migrations to that database, runs the current integration test suite, and drops the temporary database afterward. Override the default local connection with `CODECLAW_TEST_POSTGRES_ADMIN_URL` or the `CODECLAW_TEST_POSTGRES_*` variables if your Postgres instance is elsewhere.
 
+## Current API Surface
+
+The current backend exposes:
+
+- `GET /health`
+- `GET /projects`
+- `GET /tasks`
+- `POST /tasks`
+- `GET /tasks/{task_id}`
+- `GET /tasks/{task_id}/diff`
+- `GET /tasks/{task_id}/stdout`
+- `GET /tasks/{task_id}/stderr`
+- `POST /tasks/{task_id}/approval`
+- `GET /tasks/{task_id}/events`
+
 ## Current scope
 
 This bootstrap includes:
@@ -56,6 +78,7 @@ This bootstrap includes:
 - Alembic-based schema migrations
 - task creation and state transitions
 - per-task git worktree isolation
+- durable task artifacts for diff/stdout/stderr review
 - SSE task event stream
 
 Projects are loaded from `~/.codeclaw/config.toml` with optional per-project metadata under `~/.codeclaw/projects/<project-id>/`.
