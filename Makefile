@@ -7,44 +7,49 @@ UVICORN := venv/bin/uvicorn
 DOCKER_COMPOSE := docker compose
 ALEMBIC := venv/bin/alembic
 
-.PHONY: install install-dev run run-dev lint test test-postgres db-up db-down db-logs db-ps db-migrate db-current
+.DEFAULT_GOAL := help
 
-install:
+.PHONY: help install install-dev run run-dev lint test test-integration db-up db-down db-logs db-ps db-migrate db-current
+
+help: ## List available make targets
+	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_-]+:.*## / {printf "%-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+install: ## Install the package in editable mode
 	$(PIP) install -e .
 
-install-dev:
+install-dev: ## Install the package with development dependencies
 	$(PIP) install -e ".[dev]"
 
-run:
+run: ## Start the API with auto-reload
 	$(UVICORN) app.main:app --reload
 
-run-dev:
+run-dev: ## Start the API with auto-reload for development
 	$(UVICORN) app.main:app --reload
 
-lint:
+lint: ## Run Ruff and Mypy checks
 	$(RUFF) check app --fix
 	$(MYPY) app
 
-test:
-	$(PYTEST)
+test: ## Run the default test suite under tests/unit
+	$(PYTEST) tests/unit
 
-test-postgres: db-up
-	$(PYTEST) -m postgres_integration tests/test_postgres_integration.py
+test-integration: db-up ## Run integration tests under tests/integration
+	$(PYTEST) tests/integration/test_postgres_integration.py
 
-db-up:
+db-up: ## Start the local Postgres container and wait for readiness
 	$(DOCKER_COMPOSE) up -d --wait postgres
 
-db-down:
+db-down: ## Stop the local Postgres container
 	$(DOCKER_COMPOSE) down
 
-db-logs:
+db-logs: ## Follow logs for the local Postgres container
 	$(DOCKER_COMPOSE) logs -f postgres
 
-db-ps:
+db-ps: ## Show local Postgres container status
 	$(DOCKER_COMPOSE) ps
 
-db-migrate:
+db-migrate: ## Apply Alembic migrations to the configured database
 	$(ALEMBIC) upgrade head
 
-db-current:
+db-current: ## Show the current Alembic revision
 	$(ALEMBIC) current

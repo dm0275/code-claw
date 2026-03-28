@@ -127,7 +127,7 @@ Most recent verification:
 - Result: passed
 - `make test`
 - Result: `10 passed`
-- `make test-postgres`
+- `make test-integration`
 - Result: blocked locally because the Docker daemon was not running
 - `venv/bin/alembic upgrade head`
 - Result: passed against a temporary SQLite database

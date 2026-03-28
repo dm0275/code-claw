@@ -68,6 +68,7 @@ def make_sql_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
     client = TestClient(create_app(service))
     return client, service, project_root
 
+
 def test_healthcheck(tmp_path: Path) -> None:
     client, _, _ = make_context(tmp_path)
 

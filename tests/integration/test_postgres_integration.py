@@ -6,7 +6,6 @@ import uuid
 from pathlib import Path
 
 import psycopg
-import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
@@ -25,8 +24,6 @@ DEFAULT_POSTGRES_PORT = int(os.environ.get("CODECLAW_TEST_POSTGRES_PORT", "5432"
 DEFAULT_POSTGRES_USER = os.environ.get("CODECLAW_TEST_POSTGRES_USER", "codeclaw")
 DEFAULT_POSTGRES_PASSWORD = os.environ.get("CODECLAW_TEST_POSTGRES_PASSWORD", "codeclaw")
 DEFAULT_POSTGRES_ADMIN_DB = os.environ.get("CODECLAW_TEST_POSTGRES_ADMIN_DB", "postgres")
-
-pytestmark = pytest.mark.postgres_integration
 
 
 def postgres_admin_url() -> str:
@@ -47,7 +44,7 @@ def postgres_database_url(database_name: str) -> str:
 
 
 def alembic_config(database_url: str) -> Config:
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parents[2]
     config = Config(str(repo_root / "alembic.ini"))
     config.set_main_option("script_location", str(repo_root / "migrations"))
     config.set_main_option("sqlalchemy.url", database_url)
@@ -75,7 +72,6 @@ def wait_for_admin_connection(
     raise TimeoutError("Timed out waiting for Postgres to accept admin connections")
 
 
-@pytest.fixture
 def postgres_session_factory() -> sessionmaker[Session]:
     database_name = f"codeclaw_test_{uuid.uuid4().hex}"
     admin_url = postgres_admin_url()
@@ -86,13 +82,64 @@ def postgres_session_factory() -> sessionmaker[Session]:
     with psycopg.connect(admin_url, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
 
+    command.upgrade(alembic_config(database_url), "head")
+    return init_db(database_url)
+
+
+def test_sql_store_and_service_work_against_live_postgres(tmp_path: Path) -> None:
+    session_factory = postgres_session_factory()
+    database_name = session_factory.kw["bind"].url.database
+
     try:
-        command.upgrade(alembic_config(database_url), "head")
-        yield init_db(database_url)
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        init_git_repo(project_root)
+
+        project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
+        store = SqlStore(projects=[project], session_factory=session_factory)
+        service = TaskService(
+            store=store,
+            workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
+            broker=EventBroker(),
+        )
+        service.runner = InstantRunner()
+        client = TestClient(create_app(service))
+
+        task_response = client.post(
+            "/tasks",
+            json={
+                "project_id": "demo",
+                "prompt": "Persist through live Postgres",
+                "constraints": ["Keep runtime state in Postgres"],
+                "acceptance_criteria": ["Task is reloadable after restart"],
+            },
+        )
+        assert task_response.status_code == 201
+        task_id = task_response.json()["id"]
+
+        detail = wait_for_status(client, task_id, "awaiting_approval")
+        assert detail["run"]["exit_code"] == 0
+        assert detail["task"]["summary"] == "Instant runner completed"
+
+        restarted_store = SqlStore(projects=[project], session_factory=session_factory)
+        restarted_service = TaskService(
+            store=restarted_store,
+            workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
+            broker=EventBroker(),
+        )
+
+        reloaded_detail = restarted_service.get_task_detail(task_id)
+        assert reloaded_detail.task.prompt == "Persist through live Postgres"
+        assert reloaded_detail.run is not None
+        assert reloaded_detail.run.task_id == task_id
+
+        with session_factory() as session:
+            approvals = session.query(ApprovalRow).filter(ApprovalRow.task_id == task_id).all()
+
+        assert approvals == []
     finally:
-        session_factory = init_db(database_url)
         session_factory.kw["bind"].dispose()
-        with psycopg.connect(admin_url, autocommit=True) as connection:
+        with psycopg.connect(postgres_admin_url(), autocommit=True) as connection:
             connection.execute(
                 """
                 SELECT pg_terminate_backend(pid)
@@ -104,55 +151,3 @@ def postgres_session_factory() -> sessionmaker[Session]:
             connection.execute(
                 sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(database_name))
             )
-
-
-def test_sql_store_and_service_work_against_live_postgres(
-    tmp_path: Path,
-    postgres_session_factory: sessionmaker[Session],
-) -> None:
-    project_root = tmp_path / "project"
-    project_root.mkdir()
-    init_git_repo(project_root)
-
-    project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
-    store = SqlStore(projects=[project], session_factory=postgres_session_factory)
-    service = TaskService(
-        store=store,
-        workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
-        broker=EventBroker(),
-    )
-    service.runner = InstantRunner()
-    client = TestClient(create_app(service))
-
-    task_response = client.post(
-        "/tasks",
-        json={
-            "project_id": "demo",
-            "prompt": "Persist through live Postgres",
-            "constraints": ["Keep runtime state in Postgres"],
-            "acceptance_criteria": ["Task is reloadable after restart"],
-        },
-    )
-    assert task_response.status_code == 201
-    task_id = task_response.json()["id"]
-
-    detail = wait_for_status(client, task_id, "awaiting_approval")
-    assert detail["run"]["exit_code"] == 0
-    assert detail["task"]["summary"] == "Instant runner completed"
-
-    restarted_store = SqlStore(projects=[project], session_factory=postgres_session_factory)
-    restarted_service = TaskService(
-        store=restarted_store,
-        workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
-        broker=EventBroker(),
-    )
-
-    reloaded_detail = restarted_service.get_task_detail(task_id)
-    assert reloaded_detail.task.prompt == "Persist through live Postgres"
-    assert reloaded_detail.run is not None
-    assert reloaded_detail.run.task_id == task_id
-
-    with postgres_session_factory() as session:
-        approvals = session.query(ApprovalRow).filter(ApprovalRow.task_id == task_id).all()
-
-    assert approvals == []
