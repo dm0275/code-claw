@@ -1,4 +1,4 @@
-from app.harness.models import TaskSnapshot, TaskSubmission
+from app.harness.models import RunnerResult, TaskSnapshot, TaskSubmission
 from app.harness.protocols import (
     ArtifactManagerProtocol,
     EventBrokerProtocol,
@@ -23,6 +23,7 @@ __all__ = [
     "EventBrokerProtocol",
     "PromptBuilder",
     "PromptBuilderProtocol",
+    "RunnerResult",
     "RunnerProtocol",
     "TaskRuntime",
     "TaskSnapshot",

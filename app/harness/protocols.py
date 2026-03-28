@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Iterator, Protocol
 
+from app.harness.models import RunnerResult
 from app.models import Project, Run, Task, TaskEvent
-from app.store import Store
 
 
 class EventBrokerProtocol(Protocol):
@@ -31,10 +31,11 @@ class ArtifactManagerProtocol(Protocol):
 
 
 class RunnerProtocol(Protocol):
+    """Execute one task run and return a generic agent-run result."""
+
     def execute(
         self,
         task: Task,
         run: Run,
-        store: Store,
         broker: EventBrokerProtocol,
-    ) -> None: ...
+    ) -> RunnerResult: ...

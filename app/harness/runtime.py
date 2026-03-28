@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterator, TextIO
 from fastapi import HTTPException, status
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
-from app.harness.models import TaskSnapshot, TaskSubmission
+from app.harness.models import RunnerResult, TaskSnapshot, TaskSubmission
 from app.harness.protocols import (
     ArtifactManagerProtocol,
     EventBrokerProtocol,
@@ -266,15 +266,6 @@ class TaskWorkspace:
     branch_name: str | None = None
 
 
-@dataclass
-class CodexCliResult:
-    exit_code: int
-    summary: str
-    stdout: list[str]
-    stderr: list[str]
-    files_modified: list[str]
-
-
 class ArtifactManager:
     """Persist durable review artifacts independently from git workspace operations."""
 
@@ -308,39 +299,19 @@ class CodexRunner:
     def __init__(self, binary: str = "codex") -> None:
         self.binary = binary
 
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
-        """Execute Codex for a task and update run/task state from the result."""
+    def execute(self, task: Task, run: Run, broker: EventBrokerProtocol) -> RunnerResult:
+        """Execute Codex for a task and return a generic runner result."""
         cwd = Path(run.cwd)
-        self._publish_log(task.id, "Launching Codex CLI", store, broker)
-        result = self._run_codex(cwd, run.structured_prompt, task.id, store, broker)
-
-        run.stdout = result.stdout
-        run.stderr = result.stderr
-        run.exit_code = result.exit_code
-        run.completed_at = utc_now()
-        run.status = TaskStatus.AWAITING_APPROVAL if result.exit_code == 0 else TaskStatus.FAILED
-        store.set_run(run)
-
-        task.status = TaskStatus.AWAITING_APPROVAL if result.exit_code == 0 else TaskStatus.FAILED
-        task.summary = result.summary
-        task.files_modified = result.files_modified
-        task.updated_at = utc_now()
-        task.completed_at = utc_now() if result.exit_code != 0 else None
-        store.update_task(task)
-
-        if result.exit_code == 0:
-            self._publish_status(task.id, "Task is awaiting approval", store, broker)
-        else:
-            self._publish_status(task.id, "Task failed", store, broker)
+        self._publish_log(task.id, "Launching Codex CLI", broker)
+        return self._run_codex(cwd, run.structured_prompt, task.id, broker)
 
     def _run_codex(
         self,
         cwd: Path,
         prompt: str,
         task_id: str,
-        store: Store,
-        broker: EventBroker,
-    ) -> CodexCliResult:
+        broker: EventBrokerProtocol,
+    ) -> RunnerResult:
         """Invoke `codex exec --json` and capture both streamed logs and final output."""
         with NamedTemporaryFile(mode="w+", encoding="utf-8", suffix=".txt") as output_file:
             command = [
@@ -371,12 +342,12 @@ class CodexRunner:
             stderr_lines: list[str] = []
             stdout_thread = Thread(
                 target=self._consume_stream,
-                args=(process.stdout, stdout_lines, task_id, "log", store, broker),
+                args=(process.stdout, stdout_lines, task_id, "log", broker),
                 daemon=True,
             )
             stderr_thread = Thread(
                 target=self._consume_stream,
-                args=(process.stderr, stderr_lines, task_id, "error", store, broker),
+                args=(process.stderr, stderr_lines, task_id, "error", broker),
                 daemon=True,
             )
             stdout_thread.start()
@@ -396,7 +367,7 @@ class CodexRunner:
                 )
 
         files_modified = self._collect_changed_files(cwd) if exit_code == 0 else []
-        return CodexCliResult(
+        return RunnerResult(
             exit_code=exit_code,
             summary=summary,
             stdout=stdout_lines,
@@ -410,8 +381,7 @@ class CodexRunner:
         sink: list[str],
         task_id: str,
         event_type: str,
-        store: Store,
-        broker: EventBroker,
+        broker: EventBrokerProtocol,
     ) -> None:
         if stream is None:
             return
@@ -422,10 +392,7 @@ class CodexRunner:
                     continue
                 sink.append(line)
                 message = self._format_stream_message(line)
-                event = store.add_event(
-                    TaskEvent(task_id=task_id, type=event_type, message=message)
-                )
-                broker.publish(event)
+                broker.publish(TaskEvent(task_id=task_id, type=event_type, message=message))
         finally:
             stream.close()
 
@@ -470,25 +437,8 @@ class CodexRunner:
             files.append(line[3:] if len(line) > 3 else line)
         return sorted(set(files))
 
-    def _publish_log(
-        self,
-        task_id: str,
-        message: str,
-        store: Store,
-        broker: EventBroker,
-    ) -> None:
-        event = store.add_event(TaskEvent(task_id=task_id, type="log", message=message))
-        broker.publish(event)
-
-    def _publish_status(
-        self,
-        task_id: str,
-        message: str,
-        store: Store,
-        broker: EventBroker,
-    ) -> None:
-        event = store.add_event(TaskEvent(task_id=task_id, type="status", message=message))
-        broker.publish(event)
+    def _publish_log(self, task_id: str, message: str, broker: EventBrokerProtocol) -> None:
+        broker.publish(TaskEvent(task_id=task_id, type="log", message=message))
 
 
 class TaskRuntime:
@@ -626,7 +576,8 @@ class TaskRuntime:
         self._publish(task.id, "prompt", structured_prompt)
 
         try:
-            self.runner.execute(task, run, self.store, self.broker)
+            result = self.runner.execute(task, run, self.broker)
+            self._apply_runner_result(task, run, result)
             if run.status is TaskStatus.AWAITING_APPROVAL:
                 self._persist_review_artifacts(task.id, task, task_workspace, run)
         except Exception as exc:
@@ -659,6 +610,26 @@ class TaskRuntime:
     def _publish(self, task_id: str, event_type: str, message: str) -> None:
         event = self.store.add_event(TaskEvent(task_id=task_id, type=event_type, message=message))
         self.broker.publish(event)
+
+    def _apply_runner_result(self, task: Task, run: Run, result: RunnerResult) -> None:
+        run.stdout = list(result.stdout)
+        run.stderr = list(result.stderr)
+        run.exit_code = result.exit_code
+        run.completed_at = utc_now()
+        run.status = TaskStatus.AWAITING_APPROVAL if result.exit_code == 0 else TaskStatus.FAILED
+        self.store.set_run(run)
+
+        task.status = TaskStatus.AWAITING_APPROVAL if result.exit_code == 0 else TaskStatus.FAILED
+        task.summary = result.summary
+        task.files_modified = list(result.files_modified)
+        task.updated_at = utc_now()
+        task.completed_at = utc_now() if result.exit_code != 0 else None
+        self.store.update_task(task)
+
+        if result.exit_code == 0:
+            self._publish(task.id, "status", "Task is awaiting approval")
+        else:
+            self._publish(task.id, "status", "Task failed")
 
     def _apply_task_changes(self, task_id: str) -> None:
         workspace = self.task_workspaces.get(task_id)

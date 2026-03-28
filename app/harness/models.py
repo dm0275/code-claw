@@ -18,3 +18,12 @@ class TaskSnapshot:
     task: Task
     run: Run | None = None
     recent_events: list[TaskEvent] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RunnerResult:
+    exit_code: int
+    summary: str
+    stdout: list[str] = field(default_factory=list)
+    stderr: list[str] = field(default_factory=list)
+    files_modified: list[str] = field(default_factory=list)

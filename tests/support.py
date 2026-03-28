@@ -7,67 +7,51 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.harness import EventBroker
-from app.models import Run, Task, TaskEvent, TaskStatus, utc_now
-from app.store import Store
+from app.harness import EventBroker, RunnerResult
+from app.models import Run, Task, TaskEvent
 
 
 class InstantRunner:
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
-        run.stdout.append("runner executed")
-        run.status = TaskStatus.AWAITING_APPROVAL
-        run.exit_code = 0
-        run.completed_at = utc_now()
-        store.set_run(run)
-
-        task.status = TaskStatus.AWAITING_APPROVAL
-        task.summary = "Instant runner completed"
-        task.files_modified = ["app/main.py"]
-        task.updated_at = utc_now()
-        store.update_task(task)
+    def execute(self, task: Task, run: Run, broker: EventBroker) -> RunnerResult:
         broker.publish(
-            store.add_event(
-                TaskEvent(
-                    task_id=task.id,
-                    type="status",
-                    message="Task is awaiting approval",
-                )
+            TaskEvent(
+                task_id=task.id,
+                type="log",
+                message="runner executed",
             )
+        )
+        return RunnerResult(
+            exit_code=0,
+            summary="Instant runner completed",
+            stdout=["runner executed"],
+            files_modified=["app/main.py"],
         )
 
 
 class WorktreeRunner:
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
+    def execute(self, task: Task, run: Run, broker: EventBroker) -> RunnerResult:
         readme_path = Path(run.cwd) / "README.md"
         readme_path.write_text(
             "# Demo\n\nCreated from isolated worktree execution.\n",
             encoding="utf-8",
         )
-
-        run.stdout.append("runner executed in isolated worktree")
-        run.status = TaskStatus.AWAITING_APPROVAL
-        run.exit_code = 0
-        run.completed_at = utc_now()
-        store.set_run(run)
-
-        task.status = TaskStatus.AWAITING_APPROVAL
-        task.summary = "Worktree runner completed"
-        task.files_modified = ["README.md"]
-        task.updated_at = utc_now()
-        store.update_task(task)
         broker.publish(
-            store.add_event(
-                TaskEvent(
-                    task_id=task.id,
-                    type="status",
-                    message="Task is awaiting approval",
-                )
+            TaskEvent(
+                task_id=task.id,
+                type="log",
+                message="runner executed in isolated worktree",
             )
+        )
+        return RunnerResult(
+            exit_code=0,
+            summary="Worktree runner completed",
+            stdout=["runner executed in isolated worktree"],
+            files_modified=["README.md"],
         )
 
 
 class FailingRunner:
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
+    def execute(self, task: Task, run: Run, broker: EventBroker) -> RunnerResult:
         raise RuntimeError("runner exploded")
 
 
