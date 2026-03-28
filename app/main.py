@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from app.config import ProjectRegistry, ProjectRegistryManager, default_config_root
 from app.db import make_session_factory
 from app.models import ApprovalRequest, Project, ProjectRegistration, Task, TaskCreate, TaskDetail
+from app.project_service import ProjectService
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 
@@ -17,11 +18,16 @@ def build_service() -> TaskService:
     session_factory = make_session_factory()
     store = SqlStore(projects=registry.projects, session_factory=session_factory)
     broker = EventBroker()
+    workspace_manager = WorkspaceManager()
     return TaskService(
         store=store,
-        workspace_manager=WorkspaceManager(),
+        workspace_manager=workspace_manager,
         broker=broker,
-        project_registry_manager=ProjectRegistryManager(config_root),
+        project_service=ProjectService(
+            store=store,
+            workspace_manager=workspace_manager,
+            project_registry_manager=ProjectRegistryManager(config_root),
+        ),
     )
 
 

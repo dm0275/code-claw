@@ -13,6 +13,7 @@ from app.config import ProjectRegistry, ProjectRegistryManager
 from app.db import ApprovalRow, TaskEventRow, create_all_tables, init_db
 from app.main import create_app
 from app.models import ApprovalAction, Project, ProjectRegistration, Run, Task, TaskEvent, utc_now
+from app.project_service import ProjectService
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 from app.store import InMemoryStore
@@ -52,11 +53,16 @@ def make_context_with_projects(
     store = InMemoryStore(projects=projects)
     broker = EventBroker()
     workspace_manager = WorkspaceManager(state_root=tmp_path / "state")
+    project_service = ProjectService(
+        store=store,
+        workspace_manager=workspace_manager,
+        project_registry_manager=ProjectRegistryManager(tmp_path / ".codeclaw"),
+    )
     service = TaskService(
         store=store,
         workspace_manager=workspace_manager,
         broker=broker,
-        project_registry_manager=ProjectRegistryManager(tmp_path / ".codeclaw"),
+        project_service=project_service,
     )
     service.runner = InstantRunner()
 

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db import ApprovalRow, init_db
 from app.main import create_app
 from app.models import Project
+from app.project_service import ProjectService
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 from tests.support import InstantRunner, init_git_repo, wait_for_status
@@ -97,10 +98,12 @@ def test_sql_store_and_service_work_against_live_postgres(tmp_path: Path) -> Non
 
         project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
         store = SqlStore(projects=[project], session_factory=session_factory)
+        workspace_manager = WorkspaceManager(state_root=tmp_path / "state")
         service = TaskService(
             store=store,
-            workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
+            workspace_manager=workspace_manager,
             broker=EventBroker(),
+            project_service=ProjectService(store=store, workspace_manager=workspace_manager),
         )
         service.runner = InstantRunner()
         client = TestClient(create_app(service))
@@ -122,10 +125,15 @@ def test_sql_store_and_service_work_against_live_postgres(tmp_path: Path) -> Non
         assert detail["task"]["summary"] == "Instant runner completed"
 
         restarted_store = SqlStore(projects=[project], session_factory=session_factory)
+        restarted_workspace_manager = WorkspaceManager(state_root=tmp_path / "state")
         restarted_service = TaskService(
             store=restarted_store,
-            workspace_manager=WorkspaceManager(state_root=tmp_path / "state"),
+            workspace_manager=restarted_workspace_manager,
             broker=EventBroker(),
+            project_service=ProjectService(
+                store=restarted_store,
+                workspace_manager=restarted_workspace_manager,
+            ),
         )
 
         reloaded_detail = restarted_service.get_task_detail(task_id)
