@@ -1,4 +1,7 @@
+from app.harness.artifacts import ArtifactManager
+from app.harness.event_broker import EventBroker
 from app.harness.models import RunnerResult, TaskSnapshot, TaskSubmission
+from app.harness.prompt_builder import PromptBuilder
 from app.harness.protocols import (
     ArtifactManagerProtocol,
     EventBrokerProtocol,
@@ -6,14 +9,9 @@ from app.harness.protocols import (
     RunnerProtocol,
     WorkspaceManagerProtocol,
 )
-from app.harness.runtime import (
-    ArtifactManager,
-    CodexRunner,
-    EventBroker,
-    PromptBuilder,
-    TaskRuntime,
-    WorkspaceManager,
-)
+from app.harness.runners import CodexRunner
+from app.harness.task_runtime import TaskRuntime
+from app.harness.workspace import TaskWorkspace, WorkspaceManager
 
 __all__ = [
     "ArtifactManager",
@@ -26,6 +24,7 @@ __all__ = [
     "RunnerResult",
     "RunnerProtocol",
     "TaskRuntime",
+    "TaskWorkspace",
     "TaskSnapshot",
     "TaskSubmission",
     "WorkspaceManager",
