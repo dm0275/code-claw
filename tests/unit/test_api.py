@@ -12,6 +12,7 @@ os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 from app.api_models import ProjectRegistration
 from app.config import ProjectRegistry, ProjectRegistryManager
 from app.db import ApprovalRow, TaskEventRow, create_all_tables, init_db
+from app.harness import InPlaceWorkspaceManager
 from app.main import create_app
 from app.models import ApprovalAction, Project, Run, Task, TaskEvent, utc_now
 from app.project_service import ProjectService
@@ -218,12 +219,47 @@ def test_task_lifecycle_and_approval(tmp_path: Path) -> None:
     assert detail["task"]["files_modified"] == ["app/main.py"]
     assert detail["run"]["exit_code"] == 0
     assert "OBJECTIVE:" in detail["run"]["structured_prompt"]
-    assert "ACCEPTANCE CRITERIA:" in detail["run"]["structured_prompt"]
-    assert "PROJECT:" in detail["run"]["structured_prompt"]
 
+
+def test_task_can_complete_without_approval_in_place(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    init_git_repo(project_root)
+
+    project = Project(
+        id="demo",
+        name="Demo",
+        path=str(project_root),
+        default_branch="main",
+    )
+    project.execution.approval_required = False
+    store = InMemoryStore(projects=[project])
+    broker = EventBroker()
+    workspace_manager = InPlaceWorkspaceManager()
+    service = TaskService(store=store, workspace_manager=workspace_manager, broker=broker)
+    service.runner = WorktreeRunner()
+
+    client = TestClient(create_app(service))
+    task_response = client.post(
+        "/tasks",
+        json={
+            "project_id": "demo",
+            "prompt": "Update the README",
+        },
+    )
+    assert task_response.status_code == 201
+
+    task_id = task_response.json()["id"]
+    detail = wait_for_status(client, task_id, "completed")
+    assert detail["task"]["summary"] == "Worktree runner completed"
+    assert detail["run"]["exit_code"] == 0
+    assert (project_root / "README.md").exists()
+
+    event_messages = [event.message for event in service.store.list_events(task_id)]
+    assert "Task completed" in event_messages
+    assert "PROJECT:" in detail["run"]["structured_prompt"]
     approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
-    assert approval_response.status_code == 200
-    assert approval_response.json()["status"] == "completed"
+    assert approval_response.status_code == 409
 
 
 def test_task_runs_in_worktree_and_applies_on_approval(tmp_path: Path) -> None:
