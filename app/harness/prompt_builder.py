@@ -1,3 +1,5 @@
+"""Prompt construction for harness task runs."""
+
 from __future__ import annotations
 
 from app.harness.models import ExecutionTarget
@@ -5,9 +7,19 @@ from app.models import Task
 
 
 class PromptBuilder:
+    """Build the structured prompt sent to the configured runner.
+
+    Consumers can replace this with a runner-specific or domain-specific prompt
+    builder by implementing `PromptBuilderProtocol`.
+    """
+
     @staticmethod
     def build(task: Task, target: ExecutionTarget) -> str:
-        """Build the structured prompt sent to Codex for a single task run."""
+        """Build the structured prompt for a single task run.
+
+        The default format is intentionally plain text so it works across
+        runner implementations, not only Codex.
+        """
         sections = [
             "OBJECTIVE:",
             task.prompt,

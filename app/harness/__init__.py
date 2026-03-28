@@ -1,3 +1,23 @@
+"""Reusable harness package for agent-run execution against a local workspace.
+
+Typical usage for external consumers is:
+
+```python
+from app.harness import (
+    CodexRunner,
+    EventBroker,
+    ExecutionTarget,
+    TargetExecutionSettings,
+    TaskRuntime,
+    TaskSubmission,
+    WorkspaceManager,
+)
+```
+
+CodeClaw uses these exports through its own service layer, but the package is
+structured so other applications can import the same contracts directly.
+"""
+
 from app.harness.artifacts import ArtifactManager
 from app.harness.event_broker import EventBroker
 from app.harness.models import (

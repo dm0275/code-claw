@@ -1,3 +1,9 @@
+"""Runner implementations for the harness package.
+
+This module currently provides `CodexRunner`, but the contract is intentionally
+generic so other agent CLIs can be added later.
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +19,14 @@ from app.models import Run, Task, TaskEvent
 
 
 class CodexRunner:
-    """Run Codex non-interactively and translate its output into task artifacts."""
+    """Run Codex non-interactively and translate its output into `RunnerResult`.
+
+    Example:
+    ```python
+    runner = CodexRunner(binary="codex")
+    result = runner.execute(task, run, broker)
+    ```
+    """
 
     def __init__(self, binary: str = "codex") -> None:
         self.binary = binary
@@ -102,6 +115,7 @@ class CodexRunner:
         event_type: str,
         broker: EventBrokerProtocol,
     ) -> None:
+        """Read one subprocess stream and forward human-readable events to the broker."""
         if stream is None:
             return
         try:
@@ -116,6 +130,7 @@ class CodexRunner:
             stream.close()
 
     def _format_stream_message(self, line: str) -> str:
+        """Collapse raw Codex JSON output into shorter task-event messages."""
         try:
             payload: dict[str, Any] = json.loads(line)
         except json.JSONDecodeError:
@@ -139,6 +154,7 @@ class CodexRunner:
         return line
 
     def _collect_changed_files(self, cwd: Path) -> list[str]:
+        """Return the unique set of files modified in the runner workspace."""
         result = subprocess.run(
             ["git", "status", "--short"],
             cwd=str(cwd),
@@ -157,4 +173,5 @@ class CodexRunner:
         return sorted(set(files))
 
     def _publish_log(self, task_id: str, message: str, broker: EventBrokerProtocol) -> None:
+        """Publish one runner log event."""
         broker.publish(TaskEvent(task_id=task_id, type="log", message=message))

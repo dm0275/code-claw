@@ -1,3 +1,14 @@
+"""Core orchestration runtime for the reusable harness package.
+
+`TaskRuntime` is the main entry point for consumers that want the full task
+lifecycle:
+- resolve a target id
+- prepare a workspace
+- execute a runner
+- persist artifacts
+- optionally wait for approval or auto-complete
+"""
+
 from __future__ import annotations
 
 import json
@@ -26,7 +37,19 @@ from app.store import Store
 
 
 class TaskRuntime:
-    """Own the execution, review, and approval lifecycle for tasks."""
+    """Own the execution, review, and approval lifecycle for tasks.
+
+    Example:
+    ```python
+    runtime = TaskRuntime(
+        store=store,
+        target_resolver=resolver,
+        workspace_manager=WorkspaceManager(),
+        broker=EventBroker(),
+    )
+    runtime.create_task(TaskSubmission(target_id="demo", prompt="Update docs"))
+    ```
+    """
 
     def __init__(
         self,
@@ -73,6 +96,7 @@ class TaskRuntime:
         return task
 
     def list_tasks(self) -> list[Task]:
+        """Return all known tasks from the backing store."""
         return self.store.list_tasks()
 
     def get_task_detail(self, task_id: str) -> TaskSnapshot:
@@ -137,6 +161,7 @@ class TaskRuntime:
         return self._get_task_artifact(task_id, "stderr_path", "Task stderr log not found")
 
     def _run_task(self, task_id: str) -> None:
+        """Execute one task end to end inside the configured runtime policy."""
         task = self._require_task(task_id)
         target = self._require_target(task.project_id)
         approval_required = target.execution.approval_required
@@ -191,6 +216,7 @@ class TaskRuntime:
         return task
 
     def _require_target(self, target_id: str):
+        """Resolve a target id or raise a 404-style runtime error."""
         target = self.target_resolver.get_target(target_id)
         if target is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -208,6 +234,7 @@ class TaskRuntime:
         *,
         approval_required: bool,
     ) -> None:
+        """Translate a normalized runner result into persisted task and run state."""
         success_status = self._success_status(approval_required)
         run.stdout = list(result.stdout)
         run.stderr = list(result.stderr)
@@ -238,6 +265,7 @@ class TaskRuntime:
         run: Run,
         workspace: TaskWorkspace,
     ) -> None:
+        """Apply and finalize a successful task when approval is disabled."""
         self.workspace_manager.apply_task_changes(workspace)
         task.status = TaskStatus.COMPLETED
         task.updated_at = utc_now()
@@ -274,6 +302,7 @@ class TaskRuntime:
         self._artifact_locks.pop(task_id, None)
 
     def _ensure_review_artifacts(self, task_id: str, task: Task) -> None:
+        """Persist artifacts on demand before callers fetch task detail or logs."""
         if task.status not in (TaskStatus.AWAITING_APPROVAL, TaskStatus.COMPLETED):
             return
 
@@ -285,6 +314,7 @@ class TaskRuntime:
         self._persist_review_artifacts(task_id, task, workspace, run)
 
     def _get_task_artifact(self, task_id: str, field_name: str, missing_detail: str) -> str:
+        """Read one persisted artifact and translate missing files into HTTP errors."""
         task = self._require_task(task_id)
         self._ensure_review_artifacts(task_id, task)
         run = self.store.get_run(task_id)
@@ -304,6 +334,7 @@ class TaskRuntime:
         workspace: TaskWorkspace,
         run: Run,
     ) -> None:
+        """Persist artifacts once per task, even if multiple callers race to fetch them."""
         lock = self._artifact_locks.setdefault(task_id, Lock())
         with lock:
             latest_run = self.store.get_run(task_id)
@@ -321,11 +352,13 @@ class TaskRuntime:
 
     @staticmethod
     def _format_sse(event: TaskEvent) -> str:
+        """Serialize one task event into a server-sent event payload."""
         payload = json.dumps(event.model_dump(mode="json"))
         return f"event: {event.type}\ndata: {payload}\n\n"
 
     @staticmethod
     def _translate_approval_persistence_error(exc: Exception) -> HTTPException:
+        """Map storage-layer approval failures into user-facing HTTP errors."""
         message = str(exc).lower()
         indicators = [
             "no such table",
@@ -352,4 +385,5 @@ class TaskRuntime:
 
     @staticmethod
     def _success_status(approval_required: bool) -> TaskStatus:
+        """Return the steady-state success status for the current approval policy."""
         return TaskStatus.AWAITING_APPROVAL if approval_required else TaskStatus.COMPLETED

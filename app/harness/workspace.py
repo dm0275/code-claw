@@ -1,3 +1,5 @@
+"""Workspace strategies used by the harness runtime."""
+
 from __future__ import annotations
 
 import subprocess
@@ -11,6 +13,8 @@ from app.harness.models import ExecutionTarget
 
 @dataclass
 class TaskWorkspace:
+    """Resolved workspace information for one task execution."""
+
     base_root: Path
     worktree_root: Path
     ref: str
@@ -18,13 +22,16 @@ class TaskWorkspace:
 
 
 class WorkspaceManager:
-    """Prepare isolated git worktrees and apply approved task diffs safely."""
+    """Prepare isolated git worktrees and apply approved task diffs safely.
+
+    This is the default workspace strategy for CodeClaw-style review flows.
+    """
 
     def __init__(self, state_root: Path | None = None) -> None:
         self.state_root = state_root or Path.home() / ".codeclaw" / "state"
 
     def prepare(self, target: ExecutionTarget) -> Path:
-        """Validate that the configured project path exists and is a git repo."""
+        """Validate that the configured target path exists and is a git repo."""
         root = Path(target.path).expanduser().resolve()
         if not root.exists():
             raise HTTPException(
@@ -166,6 +173,7 @@ class WorkspaceManager:
 
     @staticmethod
     def build_task_patch(workspace: TaskWorkspace) -> bytes:
+        """Stage current workspace changes and return a binary-safe git patch."""
         stage_result = subprocess.run(
             ["git", "add", "-A"],
             cwd=str(workspace.worktree_root),
@@ -189,9 +197,14 @@ class WorkspaceManager:
 
 
 class InPlaceWorkspaceManager:
-    """Execute tasks directly in the configured workspace without creating a worktree."""
+    """Execute tasks directly in the configured workspace without creating a worktree.
+
+    This strategy is useful for consumers that want a simpler harness embedding
+    and are comfortable mutating the target path in place.
+    """
 
     def prepare(self, target: ExecutionTarget) -> Path:
+        """Validate that the configured target path exists."""
         root = Path(target.path).expanduser().resolve()
         if not root.exists():
             raise HTTPException(
@@ -201,6 +214,7 @@ class InPlaceWorkspaceManager:
         return root
 
     def prepare_task_workspace(self, target: ExecutionTarget, task_id: str) -> TaskWorkspace:
+        """Return the target path itself as both base and worktree roots."""
         del task_id
         root = self.prepare(target)
         return TaskWorkspace(
@@ -211,9 +225,11 @@ class InPlaceWorkspaceManager:
         )
 
     def apply_task_changes(self, workspace: TaskWorkspace) -> None:
+        """No-op for in-place execution because changes are already applied."""
         del workspace
         return None
 
     def cleanup_task_workspace(self, workspace: TaskWorkspace) -> None:
+        """No-op for in-place execution because no temporary workspace exists."""
         del workspace
         return None
