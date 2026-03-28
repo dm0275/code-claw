@@ -48,6 +48,14 @@ def create_app(task_service: TaskService | None = None) -> FastAPI:
     def get_task_diff(task_id: str) -> str:
         return service.get_task_diff(task_id)
 
+    @app.get("/tasks/{task_id}/stdout", response_class=PlainTextResponse)
+    def get_task_stdout(task_id: str) -> str:
+        return service.get_task_stdout(task_id)
+
+    @app.get("/tasks/{task_id}/stderr", response_class=PlainTextResponse)
+    def get_task_stderr(task_id: str) -> str:
+        return service.get_task_stderr(task_id)
+
     @app.post("/tasks/{task_id}/approval", response_model=Task)
     def approve_task(task_id: str, payload: ApprovalRequest) -> Task:
         return service.approve_task(task_id, payload.action)

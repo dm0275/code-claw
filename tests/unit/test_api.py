@@ -136,6 +136,14 @@ def test_task_runs_in_worktree_and_applies_on_approval(tmp_path: Path) -> None:
     assert "README.md" in diff_response.text
     assert "Created from isolated worktree execution." in diff_response.text
 
+    stdout_response = client.get(f"/tasks/{task_id}/stdout")
+    assert stdout_response.status_code == 200
+    assert "runner executed in isolated worktree" in stdout_response.text
+
+    stderr_response = client.get(f"/tasks/{task_id}/stderr")
+    assert stderr_response.status_code == 200
+    assert stderr_response.text == ""
+
     approval_response = client.post(f"/tasks/{task_id}/approval", json={"action": "approve"})
     assert approval_response.status_code == 200
     assert approval_response.json()["status"] == "completed"
@@ -161,6 +169,29 @@ def test_task_reject_cleans_up_worktree_without_touching_base_repo(tmp_path: Pat
     assert reject_response.json()["status"] == "rejected"
     assert not (project_root / "README.md").exists()
     assert not Path(run_payload["cwd"]).exists()
+
+
+def test_task_stdout_and_stderr_return_not_found_when_artifacts_are_missing(tmp_path: Path) -> None:
+    client, service, _ = make_context(tmp_path)
+    service.runner = WorktreeRunner()
+
+    task_id = client.post(
+        "/tasks",
+        json={"project_id": "demo", "prompt": "Create a README"},
+    ).json()["id"]
+
+    detail = wait_for_status(client, task_id, "awaiting_approval")
+    run_payload = detail["run"]
+    Path(run_payload["stdout_path"]).unlink()
+    Path(run_payload["stderr_path"]).unlink()
+
+    stdout_response = client.get(f"/tasks/{task_id}/stdout")
+    assert stdout_response.status_code == 404
+    assert stdout_response.json()["detail"] == "Task stdout log not found"
+
+    stderr_response = client.get(f"/tasks/{task_id}/stderr")
+    assert stderr_response.status_code == 404
+    assert stderr_response.json()["detail"] == "Task stderr log not found"
 
 
 def test_failed_runner_marks_task_failed_and_cleans_up_worktree(tmp_path: Path) -> None:

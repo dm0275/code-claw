@@ -44,6 +44,8 @@ Overall state:
 - `POST /tasks`
 - `GET /tasks/{task_id}`
 - `GET /tasks/{task_id}/diff`
+- `GET /tasks/{task_id}/stdout`
+- `GET /tasks/{task_id}/stderr`
 - `POST /tasks/{task_id}/approval`
 - `GET /tasks/{task_id}/events`
 
@@ -79,6 +81,7 @@ Overall state:
   - `diff.patch`
   - `stdout.jsonl`
   - `stderr.jsonl`
+- Durable stdout and stderr artifacts exposed through the API
 - Approval applies the isolated task diff back to the base project checkout
 - Reject and failure paths clean up task worktrees
 - SSE-compatible event formatting for live task updates
@@ -147,8 +150,7 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Expose durable stdout and stderr artifacts through the API if the UI needs them
-2. Start the web UI once the execution contract stabilizes
+1. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -178,3 +180,4 @@ Priority order:
 - Refreshed README and progress documentation to match the current backend
 - Added a dedicated live-Postgres integration test path with temporary database setup and teardown
 - Added durable SQL-backed task event persistence and restart-safe event history coverage
+- Added API endpoints for durable stdout and stderr task artifacts

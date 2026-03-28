@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from tempfile import NamedTemporaryFile
-from threading import Thread
+from threading import Lock, Thread
 from typing import Any, Dict, Iterator, TextIO
 
 from fastapi import HTTPException, status
@@ -501,6 +501,7 @@ class TaskService:
         self.prompt_builder = PromptBuilder()
         self.runner = CodexRunner()
         self.task_workspaces: dict[str, TaskWorkspace] = {}
+        self._artifact_locks: dict[str, Lock] = {}
 
     def list_projects(self) -> list[Project]:
         """Return the configured projects that this instance can execute against."""
@@ -547,8 +548,7 @@ class TaskService:
         try:
             self.runner.execute(task, run, self.store, self.broker)
             if run.status is TaskStatus.AWAITING_APPROVAL:
-                self.workspace_manager.persist_task_artifacts(task.id, task_workspace, run)
-                self.store.set_run(run)
+                self._persist_review_artifacts(task.id, task, task_workspace, run)
         except Exception as exc:
             run.status = TaskStatus.FAILED
             run.exit_code = 1
@@ -618,16 +618,15 @@ class TaskService:
 
     def get_task_diff(self, task_id: str) -> str:
         """Return the stored unified diff for a task."""
-        task = self._require_task(task_id)
-        self._ensure_review_artifacts(task_id, task)
-        run = self.store.get_run(task_id)
-        if run is None or not run.diff_path:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task diff not found")
+        return self._get_task_artifact(task_id, "diff_path", "Task diff not found")
 
-        diff_path = Path(run.diff_path)
-        if not diff_path.exists():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task diff not found")
-        return diff_path.read_text(encoding="utf-8")
+    def get_task_stdout(self, task_id: str) -> str:
+        """Return the stored stdout log for a task."""
+        return self._get_task_artifact(task_id, "stdout_path", "Task stdout log not found")
+
+    def get_task_stderr(self, task_id: str) -> str:
+        """Return the stored stderr log for a task."""
+        return self._get_task_artifact(task_id, "stderr_path", "Task stderr log not found")
 
     def _require_task(self, task_id: str) -> Task:
         task = self.store.get_task(task_id)
@@ -665,6 +664,7 @@ class TaskService:
         if workspace is None:
             return
         self.workspace_manager.cleanup_task_workspace(workspace)
+        self._artifact_locks.pop(task_id, None)
 
     def _ensure_review_artifacts(self, task_id: str, task: Task) -> None:
         if task.status is not TaskStatus.AWAITING_APPROVAL:
@@ -675,8 +675,42 @@ class TaskService:
         if run is None or workspace is None or run.diff_path:
             return
 
-        self.workspace_manager.persist_task_artifacts(task_id, workspace, run)
-        self.store.set_run(run)
+        self._persist_review_artifacts(task_id, task, workspace, run)
+
+    def _get_task_artifact(self, task_id: str, field_name: str, missing_detail: str) -> str:
+        task = self._require_task(task_id)
+        self._ensure_review_artifacts(task_id, task)
+        run = self.store.get_run(task_id)
+        path_value = getattr(run, field_name, None) if run is not None else None
+        if not path_value:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+        artifact_path = Path(path_value)
+        if not artifact_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+        return artifact_path.read_text(encoding="utf-8")
+
+    def _persist_review_artifacts(
+        self,
+        task_id: str,
+        task: Task,
+        workspace: TaskWorkspace,
+        run: Run,
+    ) -> None:
+        lock = self._artifact_locks.setdefault(task_id, Lock())
+        with lock:
+            latest_run = self.store.get_run(task_id)
+            if latest_run is not None and latest_run.diff_path:
+                run.diff_path = latest_run.diff_path
+                run.stdout_path = latest_run.stdout_path
+                run.stderr_path = latest_run.stderr_path
+                return
+
+            if task.status is not TaskStatus.AWAITING_APPROVAL:
+                return
+
+            self.workspace_manager.persist_task_artifacts(task_id, workspace, run)
+            self.store.set_run(run)
 
     @staticmethod
     def _format_sse(event: TaskEvent) -> str:
