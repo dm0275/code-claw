@@ -5,6 +5,7 @@ Initial Phase 1 backend scaffold for the PRD in [`docs/PRD.md`](docs/PRD.md).
 Current implementation status is tracked in [`docs/IMPLEMENTATION_PROGRESS.md`](docs/IMPLEMENTATION_PROGRESS.md).
 End-to-end local usage is described in [`docs/USAGE.md`](docs/USAGE.md).
 Configuration is described in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+Project onboarding direction is described in [`docs/PROJECT_REGISTRATION_PLAN.md`](docs/PROJECT_REGISTRATION_PLAN.md).
 Modeling conventions are described in [`docs/ARCHITECTURE_NOTES.md`](docs/ARCHITECTURE_NOTES.md).
 Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERSISTENCE_DECISION.md).
 
@@ -26,6 +27,7 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
 3. Register at least one allowed project in `~/.codeclaw/config.toml`.
 
    See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the config layout.
+   This manual step is temporary until project registration is exposed through the app/API.
 
 4. Start the API:
 

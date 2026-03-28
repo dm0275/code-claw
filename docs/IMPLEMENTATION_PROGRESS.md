@@ -141,6 +141,7 @@ Most recent verification:
 
 These PRD items are not implemented yet:
 
+- Project registration through the app/API
 - Authentication
 - Metrics and observability
 - Web UI
@@ -150,7 +151,8 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Start the web UI once the execution contract stabilizes
+1. Add local project registration through the app/API without requiring manual TOML edits
+2. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -181,3 +183,4 @@ Priority order:
 - Added a dedicated live-Postgres integration test path with temporary database setup and teardown
 - Added durable SQL-backed task event persistence and restart-safe event history coverage
 - Added API endpoints for durable stdout and stderr task artifacts
+- Documented the decision to separate local project registration from optional future clone/import support

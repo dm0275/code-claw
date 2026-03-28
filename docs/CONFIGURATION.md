@@ -1,6 +1,14 @@
 # Configuration
 
-CodeClaw only runs tasks against predefined projects registered in a user-managed TOML config.
+CodeClaw only runs tasks against predefined projects registered in a managed TOML config.
+
+Current state:
+
+- the backend already reads projects from TOML
+- today, users still create and edit that TOML manually
+- the next planned product task is adding project registration through the app/API
+
+The planned direction for project onboarding is documented in [PROJECT_REGISTRATION_PLAN.md](/Users/dmancilla/git/code-claw/docs/PROJECT_REGISTRATION_PLAN.md).
 
 ## Layout
 
@@ -15,7 +23,7 @@ CodeClaw only runs tasks against predefined projects registered in a user-manage
 
 ## Global registry
 
-Create `~/.codeclaw/config.toml`:
+Today, create `~/.codeclaw/config.toml` manually:
 
 ```toml
 [defaults]
@@ -61,3 +69,4 @@ Use this for long-form local-only guidance that should affect Codex prompts but 
 - Tasks must target a `project_id`.
 - Per-project `config.toml` and `instructions.md` are merged into prompt construction.
 - If the global config file does not exist, the API starts with zero available projects.
+- Manual TOML editing is temporary product behavior, not the intended long-term onboarding flow.
