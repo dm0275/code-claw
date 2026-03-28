@@ -41,7 +41,10 @@ make db-migrate
 make run
 make lint
 make test
+make test-postgres
 ```
+
+`make test-postgres` starts the local Postgres container if needed, creates a temporary database, applies Alembic migrations to that database, runs the live SQL integration test, and drops the temporary database afterward. Override the default local connection with `CODECLAW_TEST_POSTGRES_ADMIN_URL` or the `CODECLAW_TEST_POSTGRES_*` variables if your Postgres instance is elsewhere.
 
 ## Current scope
 

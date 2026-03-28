@@ -42,3 +42,8 @@ check_untyped_defs = true
 disallow_incomplete_defs = true
 no_implicit_optional = true
 pretty = true
+
+[tool.pytest.ini_options]
+markers = [
+  "postgres_integration: exercises Alembic migrations and SQL-backed services against a live Postgres instance",
+]

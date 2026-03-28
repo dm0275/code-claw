@@ -7,7 +7,7 @@ UVICORN := venv/bin/uvicorn
 DOCKER_COMPOSE := docker compose
 ALEMBIC := venv/bin/alembic
 
-.PHONY: install install-dev run run-dev lint test db-up db-down db-logs db-ps db-migrate db-current
+.PHONY: install install-dev run run-dev lint test test-postgres db-up db-down db-logs db-ps db-migrate db-current
 
 install:
 	$(PIP) install -e .
@@ -28,8 +28,11 @@ lint:
 test:
 	$(PYTEST)
 
+test-postgres: db-up
+	$(PYTEST) -m postgres_integration tests/test_postgres_integration.py
+
 db-up:
-	$(DOCKER_COMPOSE) up -d postgres
+	$(DOCKER_COMPOSE) up -d --wait postgres
 
 db-down:
 	$(DOCKER_COMPOSE) down

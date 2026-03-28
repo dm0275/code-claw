@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import subprocess
-import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -13,82 +10,19 @@ os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 from app.config import ProjectRegistry
 from app.db import ApprovalRow, create_all_tables, init_db
 from app.main import create_app
-from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, utc_now
+from app.models import ApprovalAction, Project, Run, Task, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
-from app.store import InMemoryStore, Store
-
-
-class InstantRunner:
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
-        run.stdout.append("runner executed")
-        run.status = TaskStatus.AWAITING_APPROVAL
-        run.exit_code = 0
-        run.completed_at = utc_now()
-        store.set_run(run)
-
-        task.status = TaskStatus.AWAITING_APPROVAL
-        task.summary = "Instant runner completed"
-        task.files_modified = ["app/main.py"]
-        task.updated_at = utc_now()
-        store.update_task(task)
-        broker.publish(
-            store.add_event(
-                TaskEvent(
-                    task_id=task.id,
-                    type="status",
-                    message="Task is awaiting approval",
-                )
-            )
-        )
-
-
-class WorktreeRunner:
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
-        readme_path = Path(run.cwd) / "README.md"
-        readme_path.write_text(
-            "# Demo\n\nCreated from isolated worktree execution.\n",
-            encoding="utf-8",
-        )
-
-        run.stdout.append("runner executed in isolated worktree")
-        run.status = TaskStatus.AWAITING_APPROVAL
-        run.exit_code = 0
-        run.completed_at = utc_now()
-        store.set_run(run)
-
-        task.status = TaskStatus.AWAITING_APPROVAL
-        task.summary = "Worktree runner completed"
-        task.files_modified = ["README.md"]
-        task.updated_at = utc_now()
-        store.update_task(task)
-        broker.publish(
-            store.add_event(
-                TaskEvent(
-                    task_id=task.id,
-                    type="status",
-                    message="Task is awaiting approval",
-                )
-            )
-        )
-
-
-class FailingRunner:
-    def execute(self, task: Task, run: Run, store: Store, broker: EventBroker) -> None:
-        raise RuntimeError("runner exploded")
-
-
-def init_git_repo(project_root: Path) -> None:
-    subprocess.run(["git", "init", "-b", "main"], cwd=project_root, check=True)
-    subprocess.run(["git", "config", "user.name", "CodeClaw Tests"], cwd=project_root, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "codeclaw-tests@example.com"],
-        cwd=project_root,
-        check=True,
-    )
-    (project_root / ".gitignore").write_text(".DS_Store\n", encoding="utf-8")
-    subprocess.run(["git", "add", ".gitignore"], cwd=project_root, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=project_root, check=True)
+from app.store import InMemoryStore
+from tests.support import (
+    FailingRunner,
+    InstantRunner,
+    WorktreeRunner,
+    init_git_repo,
+    sse_event_payloads,
+    wait_for_path_absence,
+    wait_for_status,
+)
 
 
 def make_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
@@ -133,32 +67,6 @@ def make_sql_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
 
     client = TestClient(create_app(service))
     return client, service, project_root
-
-
-def wait_for_status(
-    client: TestClient,
-    task_id: str,
-    expected_status: str,
-    timeout_seconds: float = 1.0,
-) -> dict:
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        response = client.get(f"/tasks/{task_id}")
-        payload = response.json()
-        if payload["task"]["status"] == expected_status:
-            return payload
-        time.sleep(0.01)
-    raise AssertionError(f"Task {task_id} did not reach status {expected_status}")
-
-
-def wait_for_path_absence(path: Path, timeout_seconds: float = 1.0) -> None:
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        if not path.exists():
-            return
-        time.sleep(0.01)
-    raise AssertionError(f"Path {path} still exists")
-
 
 def test_healthcheck(tmp_path: Path) -> None:
     client, _, _ = make_context(tmp_path)
@@ -306,12 +214,7 @@ def test_event_stream_includes_task_history(tmp_path: Path) -> None:
     assert "Task created" in body
     assert "Task is running" in body
 
-    event_payloads = []
-    for message in messages:
-        for line in message.splitlines():
-            if line.startswith("data: "):
-                event_payloads.append(json.loads(line.removeprefix("data: ")))
-
+    event_payloads = sse_event_payloads(messages)
     assert any(item["message"] == "Task is awaiting approval" for item in event_payloads)
 
 

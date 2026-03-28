@@ -105,6 +105,7 @@ Overall state:
 - SQLAlchemy-based runtime persistence
 - PostgreSQL selected as the primary database target
 - SQLite-compatible test path for persistence tests
+- Live Postgres integration test path added via temporary test databases and Alembic migrations
 - Local Postgres compose file pinned to `postgres:16.8-alpine`
 - Alembic-based schema migrations for runtime state and run artifact metadata
 - Artifact file storage rooted under `~/.codeclaw/state/artifacts/`
@@ -126,6 +127,8 @@ Most recent verification:
 - Result: passed
 - `make test`
 - Result: `10 passed`
+- `make test-postgres`
+- Result: blocked locally because the Docker daemon was not running
 - `venv/bin/alembic upgrade head`
 - Result: passed against a temporary SQLite database
 
@@ -137,18 +140,16 @@ These PRD items are not implemented yet:
 - Metrics and observability
 - Web UI
 - Docker-based isolation
-- Live Postgres integration test path
 - Durable task event persistence
 
 ## Next Recommended Work
 
 Priority order:
 
-1. Add a live-Postgres integration test path
-2. Harden approval flow for patch-conflict and unmigrated-database failure reporting
-3. Persist task events or explicitly keep them ephemeral with documented retention behavior
-4. Expose durable stdout and stderr artifacts through the API if the UI needs them
-5. Start the web UI once the execution contract stabilizes
+1. Harden approval flow for patch-conflict and unmigrated-database failure reporting
+2. Persist task events or explicitly keep them ephemeral with documented retention behavior
+3. Expose durable stdout and stderr artifacts through the API if the UI needs them
+4. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -176,3 +177,4 @@ Priority order:
 - Added Alembic migration for run artifact paths
 - Renamed migration files to ordered `0001_...` and `0002_...` format
 - Refreshed README and progress documentation to match the current backend
+- Added a dedicated live-Postgres integration test path with temporary database setup and teardown
