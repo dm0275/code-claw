@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 
-from app.models import Project
+from app.harness.models import ExecutionTarget
 
 
 @dataclass
@@ -23,9 +23,9 @@ class WorkspaceManager:
     def __init__(self, state_root: Path | None = None) -> None:
         self.state_root = state_root or Path.home() / ".codeclaw" / "state"
 
-    def prepare(self, project: Project) -> Path:
+    def prepare(self, target: ExecutionTarget) -> Path:
         """Validate that the configured project path exists and is a git repo."""
-        root = project.root
+        root = Path(target.path).expanduser().resolve()
         if not root.exists():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -45,11 +45,11 @@ class WorkspaceManager:
             )
         return root
 
-    def prepare_task_workspace(self, project: Project, task_id: str) -> TaskWorkspace:
+    def prepare_task_workspace(self, target: ExecutionTarget, task_id: str) -> TaskWorkspace:
         """Create a per-task git worktree so execution never touches the base checkout."""
-        root = self.prepare(project)
-        ref = self._resolve_base_ref(project, root)
-        worktree_root = self.state_root / "worktrees" / project.id / task_id
+        root = self.prepare(target)
+        ref = self._resolve_base_ref(target, root)
+        worktree_root = self.state_root / "worktrees" / target.id / task_id
         worktree_root.parent.mkdir(parents=True, exist_ok=True)
         if worktree_root.exists():
             subprocess.run(
@@ -62,8 +62,8 @@ class WorkspaceManager:
 
         branch_name: str | None = None
         command = ["git", "worktree", "add"]
-        if project.execution.auto_create_branch:
-            branch_name = self._branch_name(project, task_id)
+        if target.execution.auto_create_branch:
+            branch_name = self._branch_name(target, task_id)
             command.extend(["-b", branch_name])
         else:
             command.append("--detach")
@@ -133,9 +133,9 @@ class WorkspaceManager:
             )
 
     @staticmethod
-    def _resolve_base_ref(project: Project, root: Path) -> str:
-        if project.default_branch:
-            return project.default_branch
+    def _resolve_base_ref(target: ExecutionTarget, root: Path) -> str:
+        if target.default_branch:
+            return target.default_branch
 
         branch = subprocess.run(
             ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
@@ -149,8 +149,8 @@ class WorkspaceManager:
         return "HEAD"
 
     @staticmethod
-    def _branch_name(project: Project, task_id: str) -> str:
-        prefix = project.execution.branch_prefix or f"codeclaw/{project.id}"
+    def _branch_name(target: ExecutionTarget, task_id: str) -> str:
+        prefix = target.execution.branch_prefix or f"codeclaw/{target.id}"
         return f"{prefix}/{task_id[:8]}"
 
     @staticmethod
@@ -186,3 +186,34 @@ class WorkspaceManager:
         if diff.returncode != 0:
             raise RuntimeError("Failed to compute task diff")
         return diff.stdout
+
+
+class InPlaceWorkspaceManager:
+    """Execute tasks directly in the configured workspace without creating a worktree."""
+
+    def prepare(self, target: ExecutionTarget) -> Path:
+        root = Path(target.path).expanduser().resolve()
+        if not root.exists():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Workspace path does not exist: {root}",
+            )
+        return root
+
+    def prepare_task_workspace(self, target: ExecutionTarget, task_id: str) -> TaskWorkspace:
+        del task_id
+        root = self.prepare(target)
+        return TaskWorkspace(
+            base_root=root,
+            worktree_root=root,
+            ref="IN_PLACE",
+            branch_name=None,
+        )
+
+    def apply_task_changes(self, workspace: TaskWorkspace) -> None:
+        del workspace
+        return None
+
+    def cleanup_task_workspace(self, workspace: TaskWorkspace) -> None:
+        del workspace
+        return None

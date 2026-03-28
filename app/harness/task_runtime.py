@@ -16,11 +16,12 @@ from app.harness.protocols import (
     EventBrokerProtocol,
     PromptBuilderProtocol,
     RunnerProtocol,
+    TargetResolverProtocol,
     WorkspaceManagerProtocol,
 )
 from app.harness.runners import CodexRunner
 from app.harness.workspace import TaskWorkspace, WorkspaceManager
-from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, utc_now
+from app.models import ApprovalAction, Run, Task, TaskEvent, TaskStatus, utc_now
 from app.store import Store
 
 
@@ -30,6 +31,7 @@ class TaskRuntime:
     def __init__(
         self,
         store: Store,
+        target_resolver: TargetResolverProtocol,
         workspace_manager: WorkspaceManagerProtocol,
         broker: EventBrokerProtocol,
         artifact_manager: ArtifactManagerProtocol | None = None,
@@ -37,6 +39,7 @@ class TaskRuntime:
         runner: RunnerProtocol | None = None,
     ) -> None:
         self.store = store
+        self.target_resolver = target_resolver
         self.workspace_manager = workspace_manager
         if artifact_manager is None:
             if not isinstance(workspace_manager, WorkspaceManager):
@@ -53,13 +56,11 @@ class TaskRuntime:
 
     def create_task(self, submission: TaskSubmission) -> Task:
         """Create a task record and start execution in a background thread."""
-        project = self.store.get_project(submission.project_id)
-        if project is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        target = self._require_target(submission.target_id)
 
-        self.workspace_manager.prepare(project)
+        self.workspace_manager.prepare(target)
         task = Task(
-            project_id=submission.project_id,
+            project_id=submission.target_id,
             prompt=submission.prompt,
             constraints=list(submission.constraints),
             acceptance_criteria=list(submission.acceptance_criteria),
@@ -137,15 +138,16 @@ class TaskRuntime:
 
     def _run_task(self, task_id: str) -> None:
         task = self._require_task(task_id)
-        project = self._require_project(task.project_id)
+        target = self._require_target(task.project_id)
+        approval_required = target.execution.approval_required
 
         task.status = TaskStatus.RUNNING
         task.updated_at = utc_now()
         self.store.update_task(task)
         self._publish(task.id, "status", "Task is running")
 
-        structured_prompt = self.prompt_builder.build(task, project)
-        task_workspace = self.workspace_manager.prepare_task_workspace(project, task.id)
+        structured_prompt = self.prompt_builder.build(task, target)
+        task_workspace = self.workspace_manager.prepare_task_workspace(target, task.id)
         self.task_workspaces[task.id] = task_workspace
         run = Run(
             task_id=task.id,
@@ -160,9 +162,13 @@ class TaskRuntime:
 
         try:
             result = self.runner.execute(task, run, self.broker)
-            self._apply_runner_result(task, run, result)
-            if run.status is TaskStatus.AWAITING_APPROVAL:
+            self._apply_runner_result(task, run, result, approval_required=approval_required)
+            if result.exit_code == 0:
                 self._persist_review_artifacts(task.id, task, task_workspace, run)
+                if approval_required:
+                    return
+                self._complete_without_approval(task, run, task_workspace)
+                return
         except Exception as exc:
             run.status = TaskStatus.FAILED
             run.exit_code = 1
@@ -184,35 +190,66 @@ class TaskRuntime:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
         return task
 
-    def _require_project(self, project_id: str) -> Project:
-        project = self.store.get_project(project_id)
-        if project is None:
+    def _require_target(self, target_id: str):
+        target = self.target_resolver.get_target(target_id)
+        if target is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-        return project
+        return target
 
     def _publish(self, task_id: str, event_type: str, message: str) -> None:
         event = self.store.add_event(TaskEvent(task_id=task_id, type=event_type, message=message))
         self.broker.publish(event)
 
-    def _apply_runner_result(self, task: Task, run: Run, result: RunnerResult) -> None:
+    def _apply_runner_result(
+        self,
+        task: Task,
+        run: Run,
+        result: RunnerResult,
+        *,
+        approval_required: bool,
+    ) -> None:
+        success_status = self._success_status(approval_required)
         run.stdout = list(result.stdout)
         run.stderr = list(result.stderr)
         run.exit_code = result.exit_code
         run.completed_at = utc_now()
-        run.status = TaskStatus.AWAITING_APPROVAL if result.exit_code == 0 else TaskStatus.FAILED
+        run.status = success_status if result.exit_code == 0 else TaskStatus.FAILED
         self.store.set_run(run)
 
-        task.status = TaskStatus.AWAITING_APPROVAL if result.exit_code == 0 else TaskStatus.FAILED
+        task.status = success_status if result.exit_code == 0 else TaskStatus.FAILED
         task.summary = result.summary
         task.files_modified = list(result.files_modified)
         task.updated_at = utc_now()
-        task.completed_at = utc_now() if result.exit_code != 0 else None
+        task.completed_at = utc_now() if result.exit_code != 0 or not approval_required else None
         self.store.update_task(task)
 
         if result.exit_code == 0:
-            self._publish(task.id, "status", "Task is awaiting approval")
+            self._publish(
+                task.id,
+                "status",
+                "Task is awaiting approval" if approval_required else "Task completed",
+            )
         else:
             self._publish(task.id, "status", "Task failed")
+
+    def _complete_without_approval(
+        self,
+        task: Task,
+        run: Run,
+        workspace: TaskWorkspace,
+    ) -> None:
+        self.workspace_manager.apply_task_changes(workspace)
+        task.status = TaskStatus.COMPLETED
+        task.updated_at = utc_now()
+        task.completed_at = utc_now()
+        self.store.update_task(task)
+
+        run.status = TaskStatus.COMPLETED
+        run.completed_at = task.completed_at
+        self.store.set_run(run)
+
+        self._publish(task.id, "status", "Task completed")
+        self._cleanup_task_workspace(task.id)
 
     def _apply_task_changes(self, task_id: str) -> None:
         workspace = self.task_workspaces.get(task_id)
@@ -237,7 +274,7 @@ class TaskRuntime:
         self._artifact_locks.pop(task_id, None)
 
     def _ensure_review_artifacts(self, task_id: str, task: Task) -> None:
-        if task.status is not TaskStatus.AWAITING_APPROVAL:
+        if task.status not in (TaskStatus.AWAITING_APPROVAL, TaskStatus.COMPLETED):
             return
 
         run = self.store.get_run(task_id)
@@ -312,3 +349,7 @@ class TaskRuntime:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Approval persistence failed unexpectedly.",
         )
+
+    @staticmethod
+    def _success_status(approval_required: bool) -> TaskStatus:
+        return TaskStatus.AWAITING_APPROVAL if approval_required else TaskStatus.COMPLETED

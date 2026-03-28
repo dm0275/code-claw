@@ -5,12 +5,16 @@ from app.harness import (
     ArtifactManager,
     CodexRunner,
     EventBroker,
+    ExecutionTarget,
     PromptBuilder,
     RunnerProtocol,
+    TargetContext,
+    TargetExecutionSettings,
     TaskRuntime,
+    TaskSnapshot,
+    TaskSubmission,
     WorkspaceManager,
 )
-from app.harness.models import TaskSnapshot, TaskSubmission
 from app.models import Project, Task
 from app.project_service import ProjectService
 from app.store import Store
@@ -35,8 +39,9 @@ class TaskService:
         )
         self.runtime = TaskRuntime(
             store=store,
+            target_resolver=_ProjectTargetResolver(store),
             workspace_manager=workspace_manager,
-            artifact_manager=ArtifactManager(workspace_manager.state_root),
+            artifact_manager=ArtifactManager(getattr(workspace_manager, "state_root", None)),
             broker=broker,
             prompt_builder=PromptBuilder(),
             runner=CodexRunner(),
@@ -65,7 +70,7 @@ class TaskService:
     def create_task(self, payload: TaskCreate) -> Task:
         return self.runtime.create_task(
             TaskSubmission(
-                project_id=payload.project_id,
+                target_id=payload.project_id,
                 prompt=payload.prompt,
                 constraints=list(payload.constraints),
                 acceptance_criteria=list(payload.acceptance_criteria),
@@ -103,3 +108,29 @@ class TaskService:
 
 
 __all__ = ["EventBroker", "TaskService", "WorkspaceManager"]
+
+
+class _ProjectTargetResolver:
+    def __init__(self, store: Store) -> None:
+        self.store = store
+
+    def get_target(self, target_id: str) -> ExecutionTarget | None:
+        project = self.store.get_project(target_id)
+        if project is None:
+            return None
+        return ExecutionTarget(
+            id=project.id,
+            name=project.name,
+            path=project.path,
+            default_branch=project.default_branch,
+            execution=TargetExecutionSettings(
+                approval_required=project.execution.approval_required,
+                auto_create_branch=project.execution.auto_create_branch,
+                branch_prefix=project.execution.branch_prefix,
+            ),
+            context=TargetContext(
+                summary=project.context.summary,
+                extra_constraints=list(project.context.extra_constraints),
+                instructions=project.context.instructions,
+            ),
+        )
