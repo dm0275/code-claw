@@ -106,6 +106,7 @@ Overall state:
 - PostgreSQL selected as the primary database target
 - SQLite-compatible test path for persistence tests
 - Live Postgres integration test path added via temporary test databases and Alembic migrations
+- Durable task event persistence added for restart-safe task history
 - Local Postgres compose file pinned to `postgres:16.8-alpine`
 - Alembic-based schema migrations for runtime state and run artifact metadata
 - Artifact file storage rooted under `~/.codeclaw/state/artifacts/`
@@ -119,6 +120,7 @@ The following has been validated locally:
 - Application imports successfully
 - Automated tests pass
 - SQL-backed task and run persistence works across store re-creation
+- SQL-backed task event history works across store re-creation
 - Alembic migration application works against a temporary SQLite database
 
 Most recent verification:
@@ -140,16 +142,13 @@ These PRD items are not implemented yet:
 - Metrics and observability
 - Web UI
 - Docker-based isolation
-- Durable task event persistence
 
 ## Next Recommended Work
 
 Priority order:
 
-1. Harden approval flow for patch-conflict and unmigrated-database failure reporting
-2. Persist task events or explicitly keep them ephemeral with documented retention behavior
-3. Expose durable stdout and stderr artifacts through the API if the UI needs them
-4. Start the web UI once the execution contract stabilizes
+1. Expose durable stdout and stderr artifacts through the API if the UI needs them
+2. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -178,3 +177,4 @@ Priority order:
 - Renamed migration files to ordered `0001_...` and `0002_...` format
 - Refreshed README and progress documentation to match the current backend
 - Added a dedicated live-Postgres integration test path with temporary database setup and teardown
+- Added durable SQL-backed task event persistence and restart-safe event history coverage

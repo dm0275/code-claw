@@ -71,6 +71,16 @@ class ApprovalRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class TaskEventRow(Base):
+    __tablename__ = "task_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), index=True)
+    type: Mapped[str] = mapped_column(String(32), index=True)
+    message: Mapped[str] = mapped_column(String)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 def make_engine(url: str | None = None) -> Engine:
     """Create a SQLAlchemy engine for the configured runtime database."""
     return create_engine(url or database_url(), future=True)

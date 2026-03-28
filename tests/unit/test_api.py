@@ -10,9 +10,9 @@ from sqlalchemy import text
 os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 from app.config import ProjectRegistry
-from app.db import ApprovalRow, create_all_tables, init_db
+from app.db import ApprovalRow, TaskEventRow, create_all_tables, init_db
 from app.main import create_app
-from app.models import ApprovalAction, Project, Run, Task, utc_now
+from app.models import ApprovalAction, Project, Run, Task, TaskEvent, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 from app.store import InMemoryStore
@@ -355,6 +355,36 @@ def test_sql_store_persists_tasks_runs_and_approvals(tmp_path: Path) -> None:
     assert approvals[0].action == "approve"
 
 
+def test_sql_store_persists_task_events(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    init_git_repo(project_root)
+
+    database_path = tmp_path / "codeclaw.db"
+    session_factory = create_all_tables(f"sqlite+pysqlite:///{database_path}")
+    project = Project(id="demo", name="Demo", path=str(project_root), default_branch="main")
+
+    store = SqlStore(projects=[project], session_factory=session_factory)
+    task = Task(project_id="demo", prompt="Persist event history")
+    store.add_task(task)
+    created_event = store.add_event(
+        TaskEvent(task_id=task.id, type="status", message="Task created")
+    )
+
+    restarted_store = SqlStore(projects=[project], session_factory=session_factory)
+    persisted_events = restarted_store.list_events(task.id)
+
+    assert len(persisted_events) == 1
+    assert persisted_events[0].id == created_event.id
+    assert persisted_events[0].message == "Task created"
+
+    with session_factory() as session:
+        event_rows = session.query(TaskEventRow).filter(TaskEventRow.task_id == task.id).all()
+
+    assert len(event_rows) == 1
+    assert event_rows[0].type == "status"
+
+
 def test_sql_backed_service_reloads_task_history(tmp_path: Path) -> None:
     client, _, project_root = make_sql_context(tmp_path)
 
@@ -380,3 +410,9 @@ def test_sql_backed_service_reloads_task_history(tmp_path: Path) -> None:
     assert reloaded_detail.run is not None
     assert reloaded_detail.run.task_id == task_id
     assert detail["task"]["id"] == reloaded_detail.task.id
+    assert len(reloaded_detail.recent_events) >= 3
+    assert reloaded_detail.recent_events[0].message == "Task created"
+    assert any(
+        event.message == "Task is awaiting approval"
+        for event in reloaded_detail.recent_events
+    )

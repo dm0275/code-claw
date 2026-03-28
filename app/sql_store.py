@@ -1,25 +1,20 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
 from datetime import datetime
-from threading import Lock
-from typing import Deque
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db import ApprovalRow, RunRow, TaskRow, session_scope
+from app.db import ApprovalRow, RunRow, TaskEventRow, TaskRow, session_scope
 from app.models import ApprovalAction, Project, Run, Task, TaskEvent, TaskStatus, new_id
 
 
 class SqlStore:
-    """Persist tasks, runs, and approvals in SQL while keeping projects/events local."""
+    """Persist tasks, runs, approvals, and events in SQL."""
 
     def __init__(self, projects: list[Project], session_factory: sessionmaker[Session]) -> None:
-        self._lock = Lock()
         self.projects = {project.id: project for project in projects}
         self.session_factory = session_factory
-        self.events_by_task: dict[str, Deque[TaskEvent]] = defaultdict(lambda: deque(maxlen=200))
 
     def list_projects(self) -> list[Project]:
         return list(self.projects.values())
@@ -99,13 +94,19 @@ class SqlStore:
             )
 
     def add_event(self, event: TaskEvent) -> TaskEvent:
-        with self._lock:
-            self.events_by_task[event.task_id].append(event)
-            return event
+        with session_scope(self.session_factory) as session:
+            session.add(_task_event_row_from_model(event))
+        return event
 
     def list_events(self, task_id: str) -> list[TaskEvent]:
-        with self._lock:
-            return list(self.events_by_task[task_id])
+        with session_scope(self.session_factory) as session:
+            rows = (
+                session.query(TaskEventRow)
+                .filter(TaskEventRow.task_id == task_id)
+                .order_by(TaskEventRow.timestamp.asc(), TaskEventRow.id.asc())
+                .all()
+            )
+            return [_task_event_model_from_row(row) for row in rows]
 
 
 def _task_row_from_model(task: Task) -> TaskRow:
@@ -177,4 +178,24 @@ def _run_model_from_row(row: RunRow) -> Run:
         stderr=list(row.stderr or []),
         created_at=row.created_at,
         completed_at=row.completed_at,
+    )
+
+
+def _task_event_row_from_model(event: TaskEvent) -> TaskEventRow:
+    return TaskEventRow(
+        id=event.id,
+        task_id=event.task_id,
+        type=event.type,
+        message=event.message,
+        timestamp=event.timestamp,
+    )
+
+
+def _task_event_model_from_row(row: TaskEventRow) -> TaskEvent:
+    return TaskEvent(
+        id=row.id,
+        task_id=row.task_id,
+        type=row.type,
+        message=row.message,
+        timestamp=row.timestamp,
     )
