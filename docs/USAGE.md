@@ -30,24 +30,36 @@ make
 
 ## 2. Register Allowed Projects
 
-CodeClaw only runs tasks against projects declared in `~/.codeclaw/config.toml`.
+CodeClaw only runs tasks against projects declared in its managed registry.
 
-Example:
+Register an existing local git repository through the API:
 
-```toml
-[defaults]
-sandbox = "workspace-write"
-approval_required = true
-auto_create_branch = false
-
-[[projects]]
-id = "code-claw"
-name = "CodeClaw"
-path = "/Users/dmancilla/git/code-claw"
+```bash
+curl -s -X POST http://127.0.0.1:8000/projects \
+  -H 'content-type: application/json' \
+  -d '{
+    "id": "code-claw",
+    "name": "CodeClaw",
+    "path": "/Users/dmancilla/git/code-claw",
+    "default_branch": "main",
+    "execution": {
+      "sandbox": "workspace-write",
+      "approval_required": true,
+      "auto_create_branch": false,
+      "extra_writable_dirs": []
+    },
+    "context": {
+      "summary": "FastAPI backend for orchestrating Codex CLI tasks.",
+      "extra_constraints": [],
+      "instructions": "Prefer backend changes before UI work."
+    }
+  }'
 ```
 
-Optional per-project metadata lives under `~/.codeclaw/projects/<project-id>/`.
-See [CONFIGURATION.md](/Users/dmancilla/git/code-claw/docs/CONFIGURATION.md) for the full layout.
+The backend validates that the path exists and is a git repository, then writes the same TOML-backed config layout it already uses under `~/.codeclaw/`.
+
+Optional per-project metadata still lives under `~/.codeclaw/projects/<project-id>/`.
+See [CONFIGURATION.md](/Users/dmancilla/git/code-claw/docs/CONFIGURATION.md) for the underlying layout.
 
 ## 3. Verify The API Is Healthy
 
@@ -67,7 +79,13 @@ List the registered projects:
 curl -s http://127.0.0.1:8000/projects
 ```
 
-If that returns an empty list, your `~/.codeclaw/config.toml` is missing or does not define any projects.
+Fetch one registered project:
+
+```bash
+curl -s http://127.0.0.1:8000/projects/<project-id>
+```
+
+If `/projects` returns an empty list, no projects have been registered yet.
 
 ## 4. Create A Task
 

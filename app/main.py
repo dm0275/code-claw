@@ -3,20 +3,26 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from app.config import ProjectRegistry
+from app.config import ProjectRegistry, ProjectRegistryManager, default_config_root
 from app.db import make_session_factory
-from app.models import ApprovalRequest, Project, Task, TaskCreate, TaskDetail
+from app.models import ApprovalRequest, Project, ProjectRegistration, Task, TaskCreate, TaskDetail
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 
 
 def build_service() -> TaskService:
     """Build the default service graph from the user-managed project registry."""
-    registry = ProjectRegistry.load()
+    config_root = default_config_root()
+    registry = ProjectRegistry.load(config_root)
     session_factory = make_session_factory()
     store = SqlStore(projects=registry.projects, session_factory=session_factory)
     broker = EventBroker()
-    return TaskService(store=store, workspace_manager=WorkspaceManager(), broker=broker)
+    return TaskService(
+        store=store,
+        workspace_manager=WorkspaceManager(),
+        broker=broker,
+        project_registry_manager=ProjectRegistryManager(config_root),
+    )
 
 
 def create_app(task_service: TaskService | None = None) -> FastAPI:
@@ -31,6 +37,14 @@ def create_app(task_service: TaskService | None = None) -> FastAPI:
     @app.get("/projects", response_model=list[Project])
     def list_projects() -> list[Project]:
         return service.list_projects()
+
+    @app.get("/projects/{project_id}", response_model=Project)
+    def get_project(project_id: str) -> Project:
+        return service.get_project(project_id)
+
+    @app.post("/projects", response_model=Project, status_code=201)
+    def register_project(payload: ProjectRegistration) -> Project:
+        return service.register_project(payload)
 
     @app.get("/tasks", response_model=list[Task])
     def list_tasks() -> list[Task]:

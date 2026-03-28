@@ -4,9 +4,9 @@ CodeClaw only runs tasks against predefined projects registered in a managed TOM
 
 Current state:
 
-- the backend already reads projects from TOML
-- today, users still create and edit that TOML manually
-- the next planned product task is adding project registration through the app/API
+- the backend reads projects from TOML
+- the app/API can now register existing local git repositories into that TOML-backed registry
+- direct TOML editing is still supported, but it is no longer required for the basic add-project flow
 
 The planned direction for project onboarding is documented in [PROJECT_REGISTRATION_PLAN.md](/Users/dmancilla/git/code-claw/docs/PROJECT_REGISTRATION_PLAN.md).
 
@@ -23,7 +23,14 @@ The planned direction for project onboarding is documented in [PROJECT_REGISTRAT
 
 ## Global registry
 
-Today, create `~/.codeclaw/config.toml` manually:
+The registry still lives at `~/.codeclaw/config.toml`.
+
+You can populate it either:
+
+- through the app/API via `POST /projects`
+- manually by editing the TOML file
+
+Manual example:
 
 ```toml
 [defaults]
@@ -69,4 +76,4 @@ Use this for long-form local-only guidance that should affect Codex prompts but 
 - Tasks must target a `project_id`.
 - Per-project `config.toml` and `instructions.md` are merged into prompt construction.
 - If the global config file does not exist, the API starts with zero available projects.
-- Manual TOML editing is temporary product behavior, not the intended long-term onboarding flow.
+- The app/API registration flow writes the same TOML layout that the loader already understands.

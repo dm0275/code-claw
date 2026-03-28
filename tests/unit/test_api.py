@@ -9,10 +9,10 @@ from sqlalchemy import text
 
 os.environ.setdefault("CODECLAW_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
-from app.config import ProjectRegistry
+from app.config import ProjectRegistry, ProjectRegistryManager
 from app.db import ApprovalRow, TaskEventRow, create_all_tables, init_db
 from app.main import create_app
-from app.models import ApprovalAction, Project, Run, Task, TaskEvent, utc_now
+from app.models import ApprovalAction, Project, ProjectRegistration, Run, Task, TaskEvent, utc_now
 from app.services import EventBroker, TaskService, WorkspaceManager
 from app.sql_store import SqlStore
 from app.store import InMemoryStore
@@ -28,20 +28,36 @@ from tests.support import (
 
 
 def make_context(tmp_path: Path) -> tuple[TestClient, TaskService, Path]:
+    return make_context_with_projects(tmp_path, include_default_project=True)
+
+
+def make_context_with_projects(
+    tmp_path: Path,
+    include_default_project: bool,
+) -> tuple[TestClient, TaskService, Path]:
     project_root = tmp_path / "project"
     project_root.mkdir()
     init_git_repo(project_root)
 
-    project = Project(
-        id="demo",
-        name="Demo",
-        path=str(project_root),
-        default_branch="main",
-    )
-    store = InMemoryStore(projects=[project])
+    projects = []
+    if include_default_project:
+        projects.append(
+            Project(
+                id="demo",
+                name="Demo",
+                path=str(project_root),
+                default_branch="main",
+            )
+        )
+    store = InMemoryStore(projects=projects)
     broker = EventBroker()
     workspace_manager = WorkspaceManager(state_root=tmp_path / "state")
-    service = TaskService(store=store, workspace_manager=workspace_manager, broker=broker)
+    service = TaskService(
+        store=store,
+        workspace_manager=workspace_manager,
+        broker=broker,
+        project_registry_manager=ProjectRegistryManager(tmp_path / ".codeclaw"),
+    )
     service.runner = InstantRunner()
 
     client = TestClient(create_app(service))
@@ -82,6 +98,97 @@ def test_healthcheck(tmp_path: Path) -> None:
     projects_response = client.get("/projects")
     assert projects_response.status_code == 200
     assert projects_response.json()[0]["id"] == "demo"
+
+
+def test_register_project_persists_registry_and_exposes_project(tmp_path: Path) -> None:
+    client, _, project_root = make_context_with_projects(tmp_path, include_default_project=False)
+
+    response = client.post(
+        "/projects",
+        json={
+            "id": "demo",
+            "name": "Demo",
+            "path": str(project_root),
+            "default_branch": "main",
+            "execution": {
+                "sandbox": "workspace-write",
+                "approval_required": True,
+                "auto_create_branch": True,
+                "branch_prefix": "codeclaw/demo",
+                "extra_writable_dirs": [],
+            },
+            "context": {
+                "summary": "Demo project",
+                "extra_constraints": ["Do not change CI"],
+                "instructions": "Read the local docs first.",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["id"] == "demo"
+    assert payload["path"] == str(project_root.resolve())
+    assert payload["default_branch"] == "main"
+    assert payload["execution"]["branch_prefix"] == "codeclaw/demo"
+    assert payload["context"]["instructions"] == "Read the local docs first."
+
+    projects_response = client.get("/projects")
+    assert projects_response.status_code == 200
+    assert projects_response.json()[0]["id"] == "demo"
+
+    detail_response = client.get("/projects/demo")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["name"] == "Demo"
+
+    config_root = tmp_path / ".codeclaw"
+    registry = ProjectRegistry.load(config_root)
+    assert len(registry.projects) == 1
+    project = registry.projects[0]
+    assert project.id == "demo"
+    assert project.execution.auto_create_branch is True
+    assert project.context.summary == "Demo project"
+    assert project.context.extra_constraints == ["Do not change CI"]
+    assert project.context.instructions == "Read the local docs first."
+
+
+def test_register_project_rejects_duplicate_id_and_path(tmp_path: Path) -> None:
+    client, _, project_root = make_context_with_projects(tmp_path, include_default_project=False)
+    payload = ProjectRegistration(id="demo", name="Demo", path=str(project_root)).model_dump()
+
+    first_response = client.post("/projects", json=payload)
+    assert first_response.status_code == 201
+
+    other_project_root = tmp_path / "other-project"
+    other_project_root.mkdir()
+    init_git_repo(other_project_root)
+    duplicate_id_response = client.post(
+        "/projects",
+        json={**payload, "path": str(other_project_root)},
+    )
+    assert duplicate_id_response.status_code == 409
+    assert "Project id already exists" in duplicate_id_response.json()["detail"]
+
+    duplicate_path_response = client.post(
+        "/projects",
+        json={"id": "second", "name": "Second", "path": str(project_root)},
+    )
+    assert duplicate_path_response.status_code == 409
+    assert "Project path already exists" in duplicate_path_response.json()["detail"]
+
+
+def test_register_project_rejects_non_git_path(tmp_path: Path) -> None:
+    client, _, _ = make_context_with_projects(tmp_path, include_default_project=False)
+    non_git_path = tmp_path / "not-a-repo"
+    non_git_path.mkdir()
+
+    response = client.post(
+        "/projects",
+        json={"id": "demo", "name": "Demo", "path": str(non_git_path)},
+    )
+
+    assert response.status_code == 400
+    assert "not a git repository" in response.json()["detail"]
 
 
 def test_task_lifecycle_and_approval(tmp_path: Path) -> None:

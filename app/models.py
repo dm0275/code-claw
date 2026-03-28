@@ -61,6 +61,15 @@ class Project(BaseModel):
         return Path(self.path).expanduser().resolve()
 
 
+class ProjectRegistration(BaseModel):
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+    default_branch: Optional[str] = None
+    execution: ProjectExecution = Field(default_factory=ProjectExecution)
+    context: ProjectContext = Field(default_factory=ProjectContext)
+
+
 class TaskCreate(BaseModel):
     project_id: str = Field(validation_alias=AliasChoices("project_id", "workspace_id"))
     prompt: str = Field(min_length=1)

@@ -12,9 +12,11 @@ from typing import Any, Dict, Iterator, TextIO
 from fastapi import HTTPException, status
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
+from app.config import ProjectRegistryManager
 from app.models import (
     ApprovalAction,
     Project,
+    ProjectRegistration,
     Run,
     Task,
     TaskCreate,
@@ -494,10 +496,12 @@ class TaskService:
         store: Store,
         workspace_manager: WorkspaceManager,
         broker: EventBroker,
+        project_registry_manager: ProjectRegistryManager | None = None,
     ) -> None:
         self.store = store
         self.workspace_manager = workspace_manager
         self.broker = broker
+        self.project_registry_manager = project_registry_manager or ProjectRegistryManager()
         self.prompt_builder = PromptBuilder()
         self.runner = CodexRunner()
         self.task_workspaces: dict[str, TaskWorkspace] = {}
@@ -506,6 +510,30 @@ class TaskService:
     def list_projects(self) -> list[Project]:
         """Return the configured projects that this instance can execute against."""
         return self.store.list_projects()
+
+    def get_project(self, project_id: str) -> Project:
+        """Return one registered project."""
+        return self._require_project(project_id)
+
+    def register_project(self, payload: ProjectRegistration) -> Project:
+        """Register an existing local git repository as an available project."""
+        candidate = Project(
+            id=payload.id,
+            name=payload.name,
+            path=str(Path(payload.path).expanduser().resolve()),
+            default_branch=payload.default_branch,
+            execution=payload.execution,
+            context=payload.context,
+        )
+        self.workspace_manager.prepare(candidate)
+
+        try:
+            project = self.project_registry_manager.register_project(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+        self.store.register_project(project)
+        return project
 
     def create_task(self, payload: TaskCreate) -> Task:
         """Create a task record and start execution in a background thread."""

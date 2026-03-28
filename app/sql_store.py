@@ -22,6 +22,10 @@ class SqlStore:
     def get_project(self, project_id: str) -> Project | None:
         return self.projects.get(project_id)
 
+    def register_project(self, project: Project) -> Project:
+        self.projects[project.id] = project
+        return project
+
     def add_task(self, task: Task) -> Task:
         with session_scope(self.session_factory) as session:
             session.add(_task_row_from_model(task))

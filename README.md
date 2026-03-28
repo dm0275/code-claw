@@ -24,10 +24,10 @@ Persistence reasoning is described in [`docs/PERSISTENCE_DECISION.md`](docs/PERS
    make db-migrate
    ```
 
-3. Register at least one allowed project in `~/.codeclaw/config.toml`.
+3. Register at least one local git repository through the API.
 
-   See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the config layout.
-   This manual step is temporary until project registration is exposed through the app/API.
+   See [`docs/USAGE.md`](docs/USAGE.md) for the `POST /projects` flow and
+   [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the underlying config layout.
 
 4. Start the API:
 
@@ -61,6 +61,8 @@ The current backend exposes:
 
 - `GET /health`
 - `GET /projects`
+- `GET /projects/{project_id}`
+- `POST /projects`
 - `GET /tasks`
 - `POST /tasks`
 - `GET /tasks/{task_id}`

@@ -31,15 +31,13 @@ Bundling both into one initial flow would make the first usable project-onboardi
 
 ## Current Product Direction
 
-The next implementation task is local project registration only.
+CodeClaw now supports local project registration for existing git repositories without requiring manual editing of `~/.codeclaw/config.toml`.
 
-That means the product should let a user add an existing local git repository without manually editing `~/.codeclaw/config.toml`.
+Cloning/import remains a possible future capability, but it is intentionally separate from the initial project-onboarding implementation.
 
-Cloning/import remains a possible future capability, but it is not part of the first project-onboarding implementation.
+## Scope Of The Current Registration Flow
 
-## Scope For The Next Task
-
-The first project-registration flow should allow a user to:
+The current project-registration flow is intended to allow a user to:
 
 - provide a project name
 - provide or confirm a project id

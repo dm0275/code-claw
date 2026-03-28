@@ -15,6 +15,8 @@ class Store(Protocol):
 
     def get_project(self, project_id: str) -> Optional[Project]: ...
 
+    def register_project(self, project: Project) -> Project: ...
+
     def add_task(self, task: Task) -> Task: ...
 
     def update_task(self, task: Task) -> Task: ...
@@ -58,6 +60,11 @@ class InMemoryStore:
     def get_project(self, project_id: str) -> Optional[Project]:
         with self._lock:
             return self.projects.get(project_id)
+
+    def register_project(self, project: Project) -> Project:
+        with self._lock:
+            self.projects[project.id] = project
+            return project
 
     def add_task(self, task: Task) -> Task:
         with self._lock:

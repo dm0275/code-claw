@@ -13,6 +13,7 @@ Overall state:
 - Project bootstrapped as a Python package with FastAPI
 - Initial backend API implemented
 - Predefined project registry introduced for execution safety
+- Project registration through the app/API added for local repositories
 - Postgres-backed persistence introduced for runtime state
 - Alembic migration tooling introduced for schema evolution
 - Durable task artifact capture introduced for review and auditability
@@ -40,6 +41,8 @@ Overall state:
 
 - `GET /health`
 - `GET /projects`
+- `GET /projects/{project_id}`
+- `POST /projects`
 - `GET /tasks`
 - `POST /tasks`
 - `GET /tasks/{task_id}`
@@ -131,7 +134,7 @@ Most recent verification:
 - `make lint`
 - Result: passed
 - `make test`
-- Result: `10 passed`
+- Result: `17 passed`
 - `make test-integration`
 - Result: `1 passed`
 - `venv/bin/alembic upgrade head`
@@ -141,7 +144,6 @@ Most recent verification:
 
 These PRD items are not implemented yet:
 
-- Project registration through the app/API
 - Authentication
 - Metrics and observability
 - Web UI
@@ -151,8 +153,7 @@ These PRD items are not implemented yet:
 
 Priority order:
 
-1. Add local project registration through the app/API without requiring manual TOML edits
-2. Start the web UI once the execution contract stabilizes
+1. Start the web UI once the execution contract stabilizes
 
 ## Change Log
 
@@ -184,3 +185,4 @@ Priority order:
 - Added durable SQL-backed task event persistence and restart-safe event history coverage
 - Added API endpoints for durable stdout and stderr task artifacts
 - Documented the decision to separate local project registration from optional future clone/import support
+- Added local project registration endpoints and config persistence for existing git repositories
