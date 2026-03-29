@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.harness.state import Run
 from app.harness.workspace import TaskWorkspace, WorkspaceManager
-from app.models import Run
 
 
 class ArtifactManager:

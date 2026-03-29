@@ -31,9 +31,9 @@ from app.harness.protocols import (
     WorkspaceManagerProtocol,
 )
 from app.harness.runners import CodexRunner
+from app.harness.state import ApprovalAction, Run, Task, TaskEvent, TaskMode, TaskStatus, utc_now
+from app.harness.store import RuntimeStoreProtocol
 from app.harness.workspace import TaskWorkspace, WorkspaceManager
-from app.models import ApprovalAction, Run, Task, TaskEvent, TaskMode, TaskStatus, utc_now
-from app.store import Store
 
 
 class TaskRuntime:
@@ -53,7 +53,7 @@ class TaskRuntime:
 
     def __init__(
         self,
-        store: Store,
+        store: RuntimeStoreProtocol,
         target_resolver: TargetResolverProtocol,
         workspace_manager: WorkspaceManagerProtocol,
         broker: EventBrokerProtocol,

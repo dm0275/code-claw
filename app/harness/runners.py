@@ -15,7 +15,7 @@ from typing import Any, TextIO
 
 from app.harness.models import RunnerResult
 from app.harness.protocols import EventBrokerProtocol
-from app.models import Run, Task, TaskEvent
+from app.harness.state import Run, Task, TaskEvent
 
 
 class CodexRunner:

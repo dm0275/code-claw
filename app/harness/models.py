@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.models import Run, Task, TaskEvent, TaskMode
+from app.harness.state import Run, Task, TaskEvent, TaskMode
 
 
 @dataclass(frozen=True)

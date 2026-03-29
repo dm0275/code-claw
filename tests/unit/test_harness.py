@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.harness import (
+    ApprovalAction,
     ArtifactManager,
     EventBroker,
     ExecutionTarget,
@@ -16,11 +17,14 @@ from app.harness import (
     PromptBuilder,
     TargetContext,
     TargetExecutionSettings,
+    Task,
+    TaskEvent,
+    TaskMode,
     TaskRuntime,
+    TaskStatus,
     TaskSubmission,
     WorkspaceManager,
 )
-from app.models import ApprovalAction, Task, TaskEvent, TaskMode, TaskStatus
 from app.store import InMemoryStore
 from tests.support import AnswerRunner, WorktreeRunner, init_git_repo
 

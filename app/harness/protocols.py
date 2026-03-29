@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Iterator, Protocol
 
 from app.harness.models import ExecutionTarget, RunnerResult
-from app.models import Run, Task, TaskEvent
+from app.harness.state import Run, Task, TaskEvent
 
 
 class EventBrokerProtocol(Protocol):

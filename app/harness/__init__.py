@@ -38,6 +38,8 @@ from app.harness.protocols import (
     WorkspaceManagerProtocol,
 )
 from app.harness.runners import CodexRunner
+from app.harness.state import ApprovalAction, Run, Task, TaskEvent, TaskMode, TaskStatus
+from app.harness.store import RuntimeStoreProtocol
 from app.harness.task_runtime import TaskRuntime
 from app.harness.workspace import (
     InPlaceWorkspaceManager,
@@ -47,6 +49,7 @@ from app.harness.workspace import (
 )
 
 __all__ = [
+    "ApprovalAction",
     "ArtifactManager",
     "ArtifactManagerProtocol",
     "CodexRunner",
@@ -57,8 +60,14 @@ __all__ = [
     "NoWorkspaceManager",
     "PromptBuilder",
     "PromptBuilderProtocol",
+    "Run",
     "RunnerResult",
     "RunnerProtocol",
+    "RuntimeStoreProtocol",
+    "Task",
+    "TaskEvent",
+    "TaskMode",
+    "TaskStatus",
     "TargetContext",
     "TargetExecutionSettings",
     "TargetResolverProtocol",
