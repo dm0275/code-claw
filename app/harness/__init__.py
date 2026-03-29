@@ -39,7 +39,12 @@ from app.harness.protocols import (
 )
 from app.harness.runners import CodexRunner
 from app.harness.task_runtime import TaskRuntime
-from app.harness.workspace import InPlaceWorkspaceManager, TaskWorkspace, WorkspaceManager
+from app.harness.workspace import (
+    InPlaceWorkspaceManager,
+    NoWorkspaceManager,
+    TaskWorkspace,
+    WorkspaceManager,
+)
 
 __all__ = [
     "ArtifactManager",
@@ -49,6 +54,7 @@ __all__ = [
     "EventBroker",
     "EventBrokerProtocol",
     "InPlaceWorkspaceManager",
+    "NoWorkspaceManager",
     "PromptBuilder",
     "PromptBuilderProtocol",
     "RunnerResult",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +34,7 @@ class WorkspaceManager:
 
     def prepare(self, target: ExecutionTarget) -> Path:
         """Validate that the configured target path exists and is a git repo."""
-        root = Path(target.path).expanduser().resolve()
+        root = _require_target_path(target)
         if not root.exists():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -206,7 +207,7 @@ class InPlaceWorkspaceManager:
 
     def prepare(self, target: ExecutionTarget) -> Path:
         """Validate that the configured target path exists."""
-        root = Path(target.path).expanduser().resolve()
+        root = _require_target_path(target)
         if not root.exists():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -234,3 +235,55 @@ class InPlaceWorkspaceManager:
         """No-op for in-place execution because no temporary workspace exists."""
         del workspace
         return None
+
+
+class NoWorkspaceManager:
+    """Execute tasks in an isolated scratch directory with no target workspace.
+
+    This strategy is intended for response-only tasks where the caller wants a
+    clean execution directory but does not want to supply or mutate a real
+    project path.
+    """
+
+    def __init__(self, state_root: Path | None = None) -> None:
+        self.state_root = state_root or Path.home() / ".harness" / "state"
+
+    def prepare(self, target: ExecutionTarget) -> Path:
+        """Prepare the scratch root used for pathless task execution."""
+        del target
+        scratch_root = self.state_root / "scratch"
+        scratch_root.mkdir(parents=True, exist_ok=True)
+        return scratch_root
+
+    def prepare_task_workspace(self, target: ExecutionTarget, task_id: str) -> TaskWorkspace:
+        """Create an empty per-task scratch directory."""
+        scratch_root = self.prepare(target)
+        workspace_root = scratch_root / task_id
+        if workspace_root.exists():
+            shutil.rmtree(workspace_root)
+        workspace_root.mkdir(parents=True, exist_ok=True)
+        return TaskWorkspace(
+            base_root=workspace_root,
+            worktree_root=workspace_root,
+            ref="NO_WORKSPACE",
+            branch_name=None,
+        )
+
+    def apply_task_changes(self, workspace: TaskWorkspace) -> None:
+        """No-op because there is no base workspace to apply back into."""
+        del workspace
+        return None
+
+    def cleanup_task_workspace(self, workspace: TaskWorkspace) -> None:
+        """Remove the per-task scratch directory."""
+        shutil.rmtree(workspace.worktree_root, ignore_errors=True)
+
+
+def _require_target_path(target: ExecutionTarget) -> Path:
+    """Resolve the target path or raise when the strategy requires one."""
+    if not target.path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workspace path is required for this execution strategy",
+        )
+    return Path(target.path).expanduser().resolve()

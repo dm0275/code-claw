@@ -12,6 +12,7 @@ from app.harness import (
     EventBroker,
     ExecutionTarget,
     InPlaceWorkspaceManager,
+    NoWorkspaceManager,
     PromptBuilder,
     TargetContext,
     TargetExecutionSettings,
@@ -108,6 +109,28 @@ def test_prompt_builder_omits_file_change_output_for_response_mode(tmp_path: Pat
     assert "- List of files changed" not in prompt
 
 
+def test_prompt_builder_marks_target_without_workspace(tmp_path: Path) -> None:
+    target = make_target(tmp_path)
+    target = ExecutionTarget(
+        id=target.id,
+        name=target.name,
+        path=None,
+        default_branch=target.default_branch,
+        execution=target.execution,
+        context=target.context,
+    )
+    task = Task(
+        project_id=target.id,
+        prompt="Who was the first president of the United States?",
+        mode=TaskMode.RESPONSE,
+    )
+
+    prompt = PromptBuilder.build(task, target)
+
+    assert "- Workspace: none" in prompt
+    assert "- Path:" not in prompt
+
+
 def test_event_broker_removes_subscriber_after_close() -> None:
     broker = EventBroker()
     stream = broker.subscribe("task-1")
@@ -158,6 +181,23 @@ def test_task_runtime_create_task_raises_not_found_for_missing_target() -> None:
     assert exc.value.status_code == 404
 
 
+def test_task_runtime_rejects_change_mode_without_workspace_path() -> None:
+    target = ExecutionTarget(id="demo", path=None)
+    runtime = TaskRuntime(
+        store=InMemoryStore(),
+        target_resolver=StaticTargetResolver(target),
+        workspace_manager=NoWorkspaceManager(),
+        artifact_manager=ArtifactManager(),
+        broker=EventBroker(),
+        runner=AnswerRunner(),
+    )
+
+    with pytest.raises(HTTPException, match="require an execution workspace path") as exc:
+        runtime.create_task(TaskSubmission(target_id=target.id, prompt="Update docs"))
+
+    assert exc.value.status_code == 400
+
+
 def test_task_runtime_completes_answer_only_task_against_dirty_base_repo(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -188,6 +228,40 @@ def test_task_runtime_completes_answer_only_task_against_dirty_base_repo(tmp_pat
     assert snapshot.run.exit_code == 0
     assert snapshot.run.diff_path is None
     assert (project_root / "LOCAL_NOTES.txt").exists()
+    assert task.id not in runtime.task_workspaces
+
+
+def test_task_runtime_completes_response_mode_without_workspace_path(tmp_path: Path) -> None:
+    target = ExecutionTarget(
+        id="demo",
+        name="No Workspace",
+        path=None,
+        execution=TargetExecutionSettings(approval_required=True),
+    )
+    state_root = tmp_path / "state"
+    runtime = TaskRuntime(
+        store=InMemoryStore(),
+        target_resolver=StaticTargetResolver(target),
+        workspace_manager=NoWorkspaceManager(state_root=state_root),
+        artifact_manager=ArtifactManager(state_root),
+        broker=EventBroker(),
+        runner=AnswerRunner(),
+    )
+
+    task = runtime.create_task(
+        TaskSubmission(
+            target_id=target.id,
+            prompt="Who was the first president of the United States?",
+            mode=TaskMode.RESPONSE,
+        )
+    )
+    snapshot = wait_for_task_status(runtime, task.id, TaskStatus.COMPLETED)
+
+    assert snapshot.task.mode is TaskMode.RESPONSE
+    assert snapshot.task.files_modified == []
+    assert snapshot.run is not None
+    assert snapshot.run.diff_path is None
+    assert snapshot.run.cwd.endswith(task.id)
     assert task.id not in runtime.task_workspaces
 
 

@@ -41,14 +41,14 @@ class TargetExecutionSettings:
 
 @dataclass(frozen=True)
 class ExecutionTarget:
-    """A harness-native execution target with a required filesystem path.
+    """A harness-native execution target.
 
-    External consumers can construct this directly instead of adapting to a
-    host application's project model.
+    `path` is optional so callers can run response-only tasks without binding
+    the harness to an existing local workspace.
     """
 
     id: str
-    path: str
+    path: str | None = None
     name: str | None = None
     default_branch: str | None = None
     execution: TargetExecutionSettings = field(default_factory=TargetExecutionSettings)

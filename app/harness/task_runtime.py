@@ -80,6 +80,7 @@ class TaskRuntime:
     def create_task(self, submission: TaskSubmission) -> Task:
         """Create a task record and start execution in a background thread."""
         target = self._require_target(submission.target_id)
+        self._validate_submission(submission, target)
 
         self.workspace_manager.prepare(target)
         task = Task(
@@ -404,6 +405,15 @@ class TaskRuntime:
     def _requires_review(result: RunnerResult, approval_required: bool) -> bool:
         """Require review only when policy requires it and the run produced changes."""
         return approval_required and bool(result.files_modified)
+
+    @staticmethod
+    def _validate_submission(submission: TaskSubmission, target) -> None:
+        """Reject task shapes the current execution target cannot support."""
+        if submission.mode is TaskMode.CHANGE and not target.path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Change-mode tasks require an execution workspace path",
+            )
 
     @staticmethod
     def _validate_result_for_task_mode(task: Task, result: RunnerResult) -> None:

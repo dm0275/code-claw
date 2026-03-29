@@ -31,8 +31,11 @@ class PromptBuilder:
             "",
             "PROJECT:",
             f"- Name: {target.name or target.id}",
-            f"- Path: {target.path}",
         ]
+        if target.path:
+            sections.append(f"- Path: {target.path}")
+        else:
+            sections.append("- Workspace: none")
         if target.context.summary:
             sections.extend(["", "PROJECT CONTEXT:", target.context.summary])
         if task.constraints:
