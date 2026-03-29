@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.harness.models import ExecutionTarget
-from app.models import Task, TaskMode
+from app.harness.state import Task, TaskMode
 
 
 class PromptBuilder:
