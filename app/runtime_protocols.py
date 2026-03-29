@@ -1,4 +1,4 @@
-from app.harness.protocols import (
+from app.agent_runtime.protocols import (
     ArtifactManagerProtocol,
     EventBrokerProtocol,
     PromptBuilderProtocol,

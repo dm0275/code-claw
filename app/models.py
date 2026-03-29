@@ -6,28 +6,28 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.harness.state import (
+from app.agent_runtime.state import (
     ApprovalAction as HarnessApprovalAction,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     Run as HarnessRun,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     Task as HarnessTask,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     TaskEvent as HarnessTaskEvent,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     TaskMode as HarnessTaskMode,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     TaskStatus as HarnessTaskStatus,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     new_id as harness_new_id,
 )
-from app.harness.state import (
+from app.agent_runtime.state import (
     utc_now,
 )
 

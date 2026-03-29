@@ -1,3 +1,3 @@
-from app.harness.models import TaskSnapshot, TaskSubmission
+from app.agent_runtime.models import TaskSnapshot, TaskSubmission
 
 __all__ = ["TaskSnapshot", "TaskSubmission"]

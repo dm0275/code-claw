@@ -4,9 +4,9 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 
+from app.agent_runtime import WorkspaceManager
 from app.api_models import ProjectRegistration
 from app.config import ProjectRegistryManager
-from app.harness import WorkspaceManager
 from app.models import Project
 from app.store import Store
 

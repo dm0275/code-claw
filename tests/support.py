@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.harness import EventBroker, Run, RunnerResult, Task, TaskEvent
+from app.agent_runtime import EventBroker, Run, RunnerResult, Task, TaskEvent
 
 
 class InstantRunner:

@@ -7,7 +7,7 @@ from threading import Thread
 import pytest
 from fastapi import HTTPException
 
-from app.harness import (
+from app.agent_runtime import (
     ApprovalAction,
     ArtifactManager,
     EventBroker,

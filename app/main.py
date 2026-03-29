@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
+from app.agent_runtime import EventBroker, WorkspaceManager
 from app.api_models import (
     ApprovalRequest,
     Project,
@@ -13,7 +14,6 @@ from app.api_models import (
 )
 from app.config import ProjectRegistry, ProjectRegistryManager, default_config_root
 from app.db import make_session_factory
-from app.harness import EventBroker, WorkspaceManager
 from app.project_service import ProjectService
 from app.services import TaskService
 from app.sql_store import SqlStore
